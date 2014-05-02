@@ -34,8 +34,9 @@ Assumes that mini-mon is running with an active mon-api server.
 
         monclient = ceilometer.publisher.monclient:monclient
 
+6.  Configure pipeline.yaml to send the metrics to the monclient publisher.
 
-6.  Setup debugging.
+7.  Setup debugging.
 
     * Create a pycharm run configuration.
   
