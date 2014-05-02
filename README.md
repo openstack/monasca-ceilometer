@@ -5,6 +5,8 @@ Python plugin code for Ceilometer to send samples to Jahmon
 
 ### Installation Instructions
 
+Assumes that mini-mon is running with an active mon-api server.
+
 1. Run devstack to get openstack installed.  ceil2mon was developed on a Ubuntu 12.04 host.
 
 2.  Checkout monclient from git.hpcloud.net.
