@@ -34,7 +34,7 @@ Assumes that mini-mon is running with an active mon-api server.
 
         monclient = ceilometer.publisher.monclient:monclient
 
-6.  Configure pipeline.yaml to send the metrics to the monclient publisher.
+6.  Configure /etc/ceilometer/pipeline.yaml to send the metrics to the monclient publisher.  Use the included pipeline.yaml file as an example.
 
 7.  Setup debugging.
 
