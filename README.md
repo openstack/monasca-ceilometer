@@ -48,4 +48,8 @@ Assumes that mini-mon is running with an active mon-api server.
     *Make sure that 'Gevent compatible debugging' is checked in Pycharm's Debugger settings.
   
   
-  
+### Todo
+
+1. Modify monclient.py to handle query parameters in any order.
+2. Modify monclient.py to not hard-code kwargs sent to client.Client.
+3. Modify monclient.py to handle runlocal and insecure with query parameters.
