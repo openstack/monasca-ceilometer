@@ -28,7 +28,7 @@ Assumes that mini-mon is running with an active mon-api server.
         monclient = ceilometer.publisher.monclient:monclient
 
 
-5.  Edit setup.cf
+5.  Edit setup.cfg
 
       Under 'ceilometer.publisher =' section add the following line:
 
