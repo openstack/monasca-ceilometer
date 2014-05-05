@@ -43,11 +43,17 @@ class monclient (publisher.PublisherBase):
             dimensions['type'] = sample.type
             dimensions['unit'] = sample.unit
             dimensions['user_id'] = sample.user_id
-            for name, value in sample.resource_metadata:
-                dimensions['meta.' + name] = value
+            for name, value in sample.resource_metadata.iteritems():
+                # We don't handle nested dictionaries at this time.
+                if isinstance(value, basestring) and value:
+                    dimensions['meta.' + name] = value
 
             timeWithoutFractionalSeconds = sample.timestamp[0:19]
-            seconds = calendar.timegm(time.strptime(timeWithoutFractionalSeconds, "%Y-%m-%dT%H:%M:%S"))
+            try:
+                seconds = calendar.timegm(time.strptime(timeWithoutFractionalSeconds, "%Y-%m-%dT%H:%M:%S"))
+            except ValueError:
+                 seconds = calendar.timegm(time.strptime(timeWithoutFractionalSeconds, "%Y-%m-%d %H:%M:%S"))
+
 
             self.metrics.create(**{'name':sample.name, 'dimensions': dimensions, 'timestamp': seconds, 'value': sample.volume})
 
