@@ -26,8 +26,7 @@ class monclient (publisher.PublisherBase):
             'auth_url': '',
             'service_type': '',
             'endpoint_type': '',
-            'insecure': False,
-            'runlocal': True
+            'insecure': False
         }
 
         mon_client = client.Client(api_version, endpoint, **kwargs)
