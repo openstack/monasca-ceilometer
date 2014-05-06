@@ -42,11 +42,7 @@ class monclient (publisher.PublisherBase):
             dimensions['type'] = sample.type
             dimensions['unit'] = sample.unit
             dimensions['user_id'] = sample.user_id
-            for name, value in sample.resource_metadata.iteritems():
-                # We don't handle nested dictionaries at this time.
-                if isinstance(value, basestring) and value:
-                    dimensions['meta.' + name] = value
-
+            self._traverse_dict(dimensions, 'meta', sample.resource_metadata)
             timeWithoutFractionalSeconds = sample.timestamp[0:19]
             try:
                 seconds = calendar.timegm(time.strptime(timeWithoutFractionalSeconds, "%Y-%m-%dT%H:%M:%S"))
@@ -56,3 +52,11 @@ class monclient (publisher.PublisherBase):
 
             self.metrics.create(**{'name':sample.name, 'dimensions': dimensions, 'timestamp': seconds, 'value': sample.volume})
 
+
+
+    def _traverse_dict(self, dimensions, name_prefix, meta_dict):
+         for name, value in meta_dict.iteritems():
+                if isinstance(value, basestring) and value:
+                    dimensions[name_prefix + '.' + name] = value
+                elif isinstance(value, dict):
+                    self._traverse_dict(dimensions, name_prefix + '.' + name, value)
