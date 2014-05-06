@@ -43,13 +43,12 @@ Assumes that mini-mon is running with an active mon-api server.
         - Script: /usr/local/bin/ceilometer-api
         - Script parameters:  -d -v --log-dir=/var/log/ceilometer-api --config-file /etc/ceilometer/ceilometer.conf
     
-    *Comment out any logging messages that cause the debugger to lose the debugging session.
-    *Make sure that 'Attach to subprocess automatically while debugging' is checked in Pycharm's Python Debugger settings.
-    *Make sure that 'Gevent compatible debugging' is checked in Pycharm's Debugger settings.
+    * Comment out any logging messages that cause the debugger to lose the debugging session.
+    * Make sure that 'Attach to subprocess automatically while debugging' is checked in Pycharm's Python Debugger settings.
+    * Make sure that 'Gevent compatible debugging' is checked in Pycharm's Debugger settings.
   
   
 ### Todo
 
 1. Modify monclient.py to handle query parameters in any order.
 2. Modify monclient.py to not hard-code kwargs sent to client.Client.
-3. Modify monclient.py to handle runlocal and insecure with query parameters.
