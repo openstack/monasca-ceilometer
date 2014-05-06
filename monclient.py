@@ -3,11 +3,10 @@ from ceilometer import publisher
 import time
 import calendar
 
-class monclient (publisher.PublisherBase):
 
+class monclient(publisher.PublisherBase):
     def __init__(self, parsed_url):
         super(monclient, self).__init__(parsed_url)
-
 
         username_password_part = parsed_url[3]
         username_part = username_password_part.split('&')[0]
@@ -45,18 +44,22 @@ class monclient (publisher.PublisherBase):
             self._traverse_dict(dimensions, 'meta', sample.resource_metadata)
             timeWithoutFractionalSeconds = sample.timestamp[0:19]
             try:
-                seconds = calendar.timegm(time.strptime(timeWithoutFractionalSeconds, "%Y-%m-%dT%H:%M:%S"))
+                seconds = \
+                    calendar.timegm(time.strptime(timeWithoutFractionalSeconds,
+                                                  "%Y-%m-%dT%H:%M:%S"))
             except ValueError:
-                 seconds = calendar.timegm(time.strptime(timeWithoutFractionalSeconds, "%Y-%m-%d %H:%M:%S"))
+                seconds = \
+                    calendar.timegm(time.strptime(timeWithoutFractionalSeconds,
+                                                  "%Y-%m-%d %H:%M:%S"))
 
-
-            self.metrics.create(**{'name':sample.name, 'dimensions': dimensions, 'timestamp': seconds, 'value': sample.volume})
-
-
+            self.metrics.create(**{'name': sample.name, 'dimensions':
+                                dimensions, 'timestamp': seconds, 'value':
+                                sample.volume})
 
     def _traverse_dict(self, dimensions, name_prefix, meta_dict):
-         for name, value in meta_dict.iteritems():
-                if isinstance(value, basestring) and value:
-                    dimensions[name_prefix + '.' + name] = value
-                elif isinstance(value, dict):
-                    self._traverse_dict(dimensions, name_prefix + '.' + name, value)
+        for name, value in meta_dict.iteritems():
+            if isinstance(value, basestring) and value:
+                dimensions[name_prefix + '.' + name] = value
+            elif isinstance(value, dict):
+                self._traverse_dict(dimensions, name_prefix + '.' + name,
+                                    value)
