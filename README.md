@@ -50,8 +50,7 @@ Assumes that mini-mon is running with an active mon-api server.
   
 ### Todo
 
-1. Modify monclient.py to handle query parameters in any order.
-2. Modify monclient.py to not hard-code kwargs sent to client.Client.
+1. Modify monclient.py to not hard-code kwargs sent to client.Client.
  
 
 
