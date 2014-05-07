@@ -13,7 +13,7 @@ class monclient(publisher.PublisherBase):
             name = query_parm.split('=')[0]
             value = query_parm.split('=')[1]
             if (name == 'username'):
-                username = value;
+                username = value
             if (name == 'password'):
                 password = value
 
@@ -66,3 +66,4 @@ class monclient(publisher.PublisherBase):
             elif isinstance(value, dict):
                 self._traverse_dict(dimensions, name_prefix + '.' + name,
                                     value)
+
