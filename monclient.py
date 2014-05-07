@@ -2,7 +2,10 @@ from ceilometer.monclient import client
 from ceilometer import publisher
 import time
 import calendar
+from ceilometer.openstack.common import log
 
+
+LOG = log.getLogger(__name__)
 
 class monclient(publisher.PublisherBase):
     def __init__(self, parsed_url):
@@ -14,10 +17,14 @@ class monclient(publisher.PublisherBase):
             value = query_parm.split('=')[1]
             if (name == 'username'):
                 username = value
+                LOG.debug(_('found username in query parameters'))
             if (name == 'password'):
                 password = value
+                LOG.debug(_('found password in query parameters'))
 
         endpoint = "http:" + parsed_url.path
+        LOG.debug(_('publishing samples to endpoint %s') % endpoint)
+
         api_version = '2_0'
         kwargs = {
             'username': username,
