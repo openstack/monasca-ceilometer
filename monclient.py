@@ -8,11 +8,14 @@ class monclient(publisher.PublisherBase):
     def __init__(self, parsed_url):
         super(monclient, self).__init__(parsed_url)
 
-        username_password_part = parsed_url[3]
-        username_part = username_password_part.split('&')[0]
-        username = username_part.split('=')[1]
-        password_part = username_password_part.split('&')[1]
-        password = password_part.split('=')[1]
+        query_parms = parsed_url[3]
+        for query_parm in query_parms.split('&'):
+            name = query_parm.split('=')[0]
+            value = query_parm.split('=')[1]
+            if (name == 'username'):
+                username = value;
+            if (name == 'password'):
+                password = value
 
         endpoint = "http:" + parsed_url.path
         api_version = '2_0'
