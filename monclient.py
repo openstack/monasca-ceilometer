@@ -8,6 +8,11 @@ from ceilometer.openstack.common import log
 LOG = log.getLogger(__name__)
 
 class monclient(publisher.PublisherBase):
+    """Publisher to publish samples to monclient.
+
+    Example URL to place in pipeline.yaml:
+        - monclient://http://192.168.10.4:8080/v2.0?username=xxxx&password=yyyy
+    """
     def __init__(self, parsed_url):
         super(monclient, self).__init__(parsed_url)
 
@@ -42,6 +47,8 @@ class monclient(publisher.PublisherBase):
         self.metrics = mon_client.metrics
 
     def publish_samples(self, context, samples):
+        """Main method called to publish samples.
+        """
 
         for sample in samples:
             dimensions = {}
@@ -67,6 +74,10 @@ class monclient(publisher.PublisherBase):
                                 sample.volume})
 
     def _traverse_dict(self, dimensions, name_prefix, meta_dict):
+        """Method to add values of a dictionary to another dictionary.
+        Handles nested dictionaries.
+        """
+
         for name, value in meta_dict.iteritems():
             if isinstance(value, basestring) and value:
                 dimensions[name_prefix + '.' + name] = value
