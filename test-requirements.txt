@@ -1,0 +1,3 @@
+# Hacking already pins down pep8, pyflakes and flake8
+pep8
+flake8

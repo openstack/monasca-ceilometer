@@ -7,6 +7,7 @@ from ceilometer.openstack.common import log
 
 LOG = log.getLogger(__name__)
 
+
 class monclient(publisher.PublisherBase):
     """Publisher to publish samples to monclient.
 
@@ -84,4 +85,3 @@ class monclient(publisher.PublisherBase):
             elif isinstance(value, dict):
                 self._traverse_dict(dimensions, name_prefix + '.' + name,
                                     value)
-
