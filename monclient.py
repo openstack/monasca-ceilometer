@@ -1,8 +1,9 @@
-from ceilometer.monclient import client
-from ceilometer import publisher
-import time
 import calendar
+import time
+
+from ceilometer.monclient import client
 from ceilometer.openstack.common import log
+from ceilometer import publisher
 
 
 LOG = log.getLogger(__name__)
@@ -48,8 +49,7 @@ class monclient(publisher.PublisherBase):
         self.metrics = mon_client.metrics
 
     def publish_samples(self, context, samples):
-        """Main method called to publish samples.
-        """
+        """Main method called to publish samples."""
 
         for sample in samples:
             dimensions = {}
@@ -76,7 +76,8 @@ class monclient(publisher.PublisherBase):
 
     def _traverse_dict(self, dimensions, name_prefix, meta_dict):
         """Method to add values of a dictionary to another dictionary.
-        Handles nested dictionaries.
+
+        Nested dictionaries are handled.
         """
 
         for name, value in meta_dict.iteritems():
