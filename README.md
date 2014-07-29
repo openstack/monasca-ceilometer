@@ -1,21 +1,21 @@
-ceil2mon
+monasca-ceilometer
 ========
 
-Python plugin code for Ceilometer to send samples to Jahmon
+Python plugin code for Ceilometer to send samples to monasca-api
 
 ### Installation Instructions
 
-Assumes that mini-mon is running with an active mon-api server.
+Assumes that an active monasca-api server is running.
 
-1. Run devstack to get openstack installed.  ceil2mon was developed on a Ubuntu 12.04 host.
+1. Run devstack to get openstack installed.  monasca-ceilometer was developed on a Ubuntu 12.04 host.
 
-2.  Checkout monclient from git.hpcloud.net.
+2.  Clone python-monascaclient from github.com.
     
-      Copy monclient to the following path:
+      Copy python-monascaclient to the following path:
 
         /opt/stack/ceilometer/ceilometer/monclient
 
-3.  Checkout ceil2mon  from git.hpcloud.net.
+3.  Clone monasca-ceilometer from github.com.
 
       Copy monclient.py to the following path:
   
