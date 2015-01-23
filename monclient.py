@@ -1,9 +1,11 @@
 import calendar
 import time
 
-from ceilometer.monclient import client
+from ceilometer.openstack.common.gettextutils import _
 from ceilometer.openstack.common import log
 from ceilometer import publisher
+from monascaclient import client
+from monascaclient import ksclient
 
 
 LOG = log.getLogger(__name__)
@@ -18,39 +20,53 @@ class monclient(publisher.PublisherBase):
     def __init__(self, parsed_url):
         super(monclient, self).__init__(parsed_url)
 
+        # Set these if they are not passed as part of the URL
+        self.token = None
+        self.username = None
+        self.password = None
+        # auth_url must be a v3 endpoint, e.g.
+        # http://192.168.10.5:35357/v3/
+        self.auth_url = None
         query_parms = parsed_url[3]
         for query_parm in query_parms.split('&'):
             name = query_parm.split('=')[0]
             value = query_parm.split('=')[1]
             if (name == 'username'):
-                username = value
+                self.username = value
                 LOG.debug(_('found username in query parameters'))
             if (name == 'password'):
-                password = value
+                self.password = value
                 LOG.debug(_('found password in query parameters'))
+            if (name == 'token'):
+                self.token = value
+                LOG.debug(_('found token in query parameters'))
 
-        endpoint = "http:" + parsed_url.path
-        LOG.debug(_('publishing samples to endpoint %s') % endpoint)
-
-        api_version = '2_0'
-        kwargs = {
-            'username': username,
-            'password': password,
-            'token': '82510970543135',
-            'tenant_id': '82510970543135',
-            'tenant_name': '',
-            'auth_url': '',
-            'service_type': '',
-            'endpoint_type': '',
-            'insecure': False
-        }
-
-        mon_client = client.Client(api_version, endpoint, **kwargs)
-        self.metrics = mon_client.metrics
+        if not self.token:
+            if not self.username or self.password:
+                LOG.error(_('username and password must be '
+                            'specified if no token is given'))
+            if not self.auth_url:
+                LOG.error(_('auth_url must be '
+                            'specified if no token is given'))
+        self.endpoint = "http:" + parsed_url['path']
+        LOG.debug(_('publishing samples to endpoint %s') % self.endpoint)
 
     def publish_samples(self, context, samples):
         """Main method called to publish samples."""
 
+        if not self.token:
+            kwargs = {
+                'username': self.username,
+                'password': self.password,
+                'auth_url': self.auth_url
+            }
+
+            _ksclient = ksclient.KSClient(**kwargs)
+            self.token = _ksclient.token
+        kwargs = {'token': self.token}
+        api_version = '2_0'
+        mon_client = client.Client(api_version, self.endpoint, **kwargs)
+        self.metrics = mon_client.metrics
         for sample in samples:
             dimensions = {}
             dimensions['project_id'] = sample.project_id

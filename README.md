@@ -9,11 +9,9 @@ Assumes that an active monasca-api server is running.
 
 1. Run devstack to get openstack installed.  monasca-ceilometer was developed on a Ubuntu 12.04 host.
 
-2.  Clone python-monascaclient from github.com.
+2.  Install python-monascaclient
     
-      Copy python-monascaclient to the following path:
-
-        /opt/stack/ceilometer/ceilometer/monclient
+      pip install python-monascaclient
 
 3.  Clone monasca-ceilometer from github.com.
 
@@ -21,12 +19,14 @@ Assumes that an active monasca-api server is running.
   
         /opt/stack/ceilometer/ceilometer/publisher/monclient.py
 
+      Edit monclient.py and set auth_url if using username and password for authentication.
+      Either set a token or username and password in monclient.py or configure it in pipeline.yaml below.
+
 4.  Edit entry_points.txt
 
       Under [ceilometer.publisher] section add the following line:
 
         monclient = ceilometer.publisher.monclient:monclient
-
 
 5.  Edit setup.cfg
 
@@ -35,6 +35,8 @@ Assumes that an active monasca-api server is running.
         monclient = ceilometer.publisher.monclient:monclient
 
 6.  Configure /etc/ceilometer/pipeline.yaml to send the metrics to the monclient publisher.  Use the included pipeline.yaml file as an example.
+
+      Set a valid username and password if a token or username and password weren't added to monclient.py
 
 7.  Setup debugging.
 
@@ -51,6 +53,7 @@ Assumes that an active monasca-api server is running.
 ### Todo
 
 1. Modify monclient.py to not hard-code kwargs sent to client.Client.
+2. Reuse the token until it expires if username and password are used
  
 # License
 
