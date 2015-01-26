@@ -26,7 +26,7 @@ class monclient(publisher.PublisherBase):
         self.password = None
         # auth_url must be a v3 endpoint, e.g.
         # http://192.168.10.5:35357/v3/
-        self.auth_url = None
+        self.auth_url = "http://20.20.20.76:35357/v3/"
         query_parms = parsed_url[3]
         for query_parm in query_parms.split('&'):
             name = query_parm.split('=')[0]
@@ -35,20 +35,19 @@ class monclient(publisher.PublisherBase):
                 self.username = value
                 LOG.debug(_('found username in query parameters'))
             if (name == 'password'):
-                self.password = value
+                self.password = str(value)
                 LOG.debug(_('found password in query parameters'))
             if (name == 'token'):
                 self.token = value
                 LOG.debug(_('found token in query parameters'))
-
         if not self.token:
-            if not self.username or self.password:
+            if not self.username or not self.password:
                 LOG.error(_('username and password must be '
                             'specified if no token is given'))
             if not self.auth_url:
                 LOG.error(_('auth_url must be '
                             'specified if no token is given'))
-        self.endpoint = "http:" + parsed_url['path']
+        self.endpoint = "http:" + parsed_url.path
         LOG.debug(_('publishing samples to endpoint %s') % self.endpoint)
 
     def publish_samples(self, context, samples):
