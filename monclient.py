@@ -26,7 +26,7 @@ class monclient(publisher.PublisherBase):
         self.password = None
         # auth_url must be a v3 endpoint, e.g.
         # http://192.168.10.5:35357/v3/
-        self.auth_url = "http://20.20.20.76:35357/v3/"
+        self.auth_url = None
         query_parms = parsed_url[3]
         for query_parm in query_parms.split('&'):
             name = query_parm.split('=')[0]
