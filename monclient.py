@@ -1,4 +1,5 @@
 import calendar
+import re
 import time
 
 from ceilometer.openstack.common.gettextutils import _
@@ -35,20 +36,20 @@ class monclient(publisher.PublisherBase):
                 self.username = value
                 LOG.debug(_('found username in query parameters'))
             if (name == 'password'):
-                self.password = value
+                self.password = str(value)
                 LOG.debug(_('found password in query parameters'))
             if (name == 'token'):
                 self.token = value
                 LOG.debug(_('found token in query parameters'))
 
         if not self.token:
-            if not self.username or self.password:
+            if not self.username or not self.password:
                 LOG.error(_('username and password must be '
                             'specified if no token is given'))
             if not self.auth_url:
                 LOG.error(_('auth_url must be '
                             'specified if no token is given'))
-        self.endpoint = "http:" + parsed_url['path']
+        self.endpoint = "http:" + parsed_url.path
         LOG.debug(_('publishing samples to endpoint %s') % self.endpoint)
 
     def publish_samples(self, context, samples):
@@ -97,6 +98,8 @@ class monclient(publisher.PublisherBase):
         """
 
         for name, value in meta_dict.iteritems():
+            # Ensure name only contains valid dimension name characters
+            name = re.sub('[^a-zA-Z0-9_\.\-]', '.', name)
             if isinstance(value, basestring) and value:
                 dimensions[name_prefix + '.' + name] = value
             elif isinstance(value, dict):
