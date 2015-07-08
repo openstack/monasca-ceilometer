@@ -1,0 +1,13 @@
+---
+sources:
+    - name: meter_source
+      interval: 6
+      meters:
+          - "*"
+      sinks:
+          - meter_sink
+sinks:
+    - name: meter_sink
+      transformers:
+      publishers:
+          - monasca://http://127.0.0.1:8080/v2.0

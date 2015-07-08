@@ -1,13 +1,13 @@
 monasca-ceilometer
 ========
 
-Python plugin code for Ceilometer to send samples to monasca-api
+Python plugin and storage driver for Ceilometer to send samples to monasca-api
 
 ### Installation Instructions
 
 Assumes that an active monasca-api server is running.
 
-1. Run devstack to get openstack installed.  monasca-ceilometer was developed on a Ubuntu 12.04 host.
+1.  Run devstack to get openstack installed.
 
 2.  Install python-monascaclient
     
@@ -15,45 +15,55 @@ Assumes that an active monasca-api server is running.
 
 3.  Clone monasca-ceilometer from github.com.
 
-      Copy monclient.py to the following path:
-  
-        /opt/stack/ceilometer/ceilometer/publisher/monclient.py
+      Copy the following files to devstack's ceilometer location typically at /opt/stack/ceilometer
 
-      Edit monclient.py and set auth_url if using username and password for authentication.
-      Either set a token or username and password in monclient.py or configure it in pipeline.yaml below.
+        ceilometer/monasca_client.py
+        ceilometer/storage/impl_monasca.py
+        ceilometer/tests/api/v2/test_api_with_monasca_driver.py
+        ceilometer/tests/storage/test_impl_monasca.py
+        ceilometer/tests/test_monascaclient.py
+        ceilometer/tests/publisher/test_monasca_publisher.py
+        ceilometer/tests/publisher/test_monasca_data_filter.py
+        ceilometer/publisher/monasca_data_filter.py
+        ceilometer/publisher/monclient.py
 
 4.  Edit entry_points.txt
 
       Under [ceilometer.publisher] section add the following line:
 
-        monclient = ceilometer.publisher.monclient:monclient
+        monasca = ceilometer.publisher.monclient:MonascaPublisher
 
-5.  Edit setup.cfg
+      Under [ceilometer.metering.storage] section add the following line:
+
+        monasca = ceilometer.storage.impl_monasca:Connection
+
+5.  Edit setup.cfg (used at the time of installation)
 
       Under 'ceilometer.publisher =' section add the following line:
 
-        monclient = ceilometer.publisher.monclient:monclient
+      monasca = ceilometer.publisher.monclient:MonascaPublisher
 
-6.  Configure /etc/ceilometer/pipeline.yaml to send the metrics to the monclient publisher.  Use the included pipeline.yaml file as an example.
+      Under 'ceilometer.metering.storage =' section add the following line
 
-      Set a valid username and password if a token or username and password weren't added to monclient.py
+      monasca = ceilometer.storage.impl_monasca:Connection
 
-7.  Setup debugging.
+6.  Configure /etc/ceilometer/pipeline.yaml to send the metrics to the monasca publisher.  Use the included pipeline.yaml file as an example.
 
-    * Create a pycharm run configuration.
-  
-        - Script: /usr/local/bin/ceilometer-api
-        - Script parameters:  -d -v --log-dir=/var/log/ceilometer-api --config-file /etc/ceilometer/ceilometer.conf
+7.  Configure /etc/ceilometer/ceilometer.conf for setting up storage driver for ceilometer API. Use the included ceilometer.conf file as an example.
+
+8.  Copy the included monasca_field_definitions.yml file to /etc/ceilometer.
     
-    * Comment out any logging messages that cause the debugger to lose the debugging session.
-    * Make sure that 'Attach to subprocess automatically while debugging' is checked in Pycharm's Python Debugger settings.
-    * Make sure that 'Gevent compatible debugging' is checked in Pycharm's Debugger settings.
-  
-  
+    This file contains configuration how to treat each field in ceilometer sample object on per meter basis.
+    The monasca_data_filter.py uses this file and only stores the fields that are specified in this config file.
+
+9.  Make sure the user specified under service_credentials in ceilometer.conf has *monasca_user role* added.
+
+### Other info
+
+ 
 ### Todo
 
-1. Modify monclient.py to not hard-code kwargs sent to client.Client.
-2. Reuse the token until it expires if username and password are used
+1. The unit test files that are included need to be used in ceilometer dev env. It will be ideal to be able to run those tests using tox with in this dev. env.
  
 # License
 
@@ -72,7 +82,3 @@ implied.
 See the License for the specific language governing permissions and
 limitations under the License.
  
-
-
-
-
