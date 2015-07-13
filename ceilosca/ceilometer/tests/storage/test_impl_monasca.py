@@ -495,6 +495,7 @@ class CapabilitiesTest(base.BaseTestCase):
         expected_capabilities = {
             'meters':
                 {
+                    'pagination': False,
                     'query':
                         {
                             'complex': False,
@@ -504,6 +505,7 @@ class CapabilitiesTest(base.BaseTestCase):
                 },
             'resources':
                 {
+                    'pagination': False,
                     'query':
                         {
                             'complex': False, 'metadata': False, 'simple': True
@@ -536,6 +538,7 @@ class CapabilitiesTest(base.BaseTestCase):
                                 },
                             'standard': True},
                     'groupby': False,
+                    'pagination': False,
                     'query':
                         {
                             'complex': False,

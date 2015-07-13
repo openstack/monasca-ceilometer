@@ -44,16 +44,6 @@ class TestMonascaClient(base.BaseTestCase):
 
             self.assertEqual(1, create_patch.call_count)
 
-    @mock.patch.object(monasca_client.Client, '_refresh_client')
-    def test_metrics_create_with_401(self, rc_patch):
-        with mock.patch.object(
-                self.mc._mon_client.metrics, 'create',
-                side_effect=[exc.HTTPUnauthorized, True]) as create_patch:
-            self.mc.metrics_create()
-
-            self.assertEqual(2, create_patch.call_count)
-            self.assertTrue(rc_patch.called)
-
     def test_metrics_create_exception(self):
         with mock.patch.object(
                 self.mc._mon_client.metrics, 'create',
