@@ -69,13 +69,9 @@ monasca_test_setup.py - determines the ceilometer venv path and copies the relev
 tox.ini - calls the commands for setup and runs the tests
 test-requirements.txt - contains the dependencies required for testing
 
-### Todo
-
-Tests under API still need some work, they don't work since it required modification of entry_points.txt in ceilometer venv
-
 # License
 
-Copyright (c) 2014 Hewlett-Packard Development Company, L.P.
+Copyright (c) 2015 Hewlett-Packard Development Company, L.P.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

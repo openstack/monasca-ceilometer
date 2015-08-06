@@ -14,11 +14,15 @@
 # under the License.
 """Test api with Monasca driver
 """
+
 import mock
+import pkg_resources
 
 from oslo_config import cfg
 from oslo_config import fixture as fixture_config
 from oslotest import mockpatch
+from stevedore import driver
+from stevedore import extension
 
 from ceilometer import storage
 from ceilometer.tests import base as test_base
@@ -36,6 +40,30 @@ class TestApi(test_base.BaseTestCase):
     # TODO(Unresolved comment from git review: Can we include CM-api test
     # cases for get_samples in
     # ceilometer/tests/api/v2/test_api_with_monasca_driver.py?)
+
+    def _get_driver_from_entry_point(self, entry_point, namespace):
+        ep = pkg_resources.EntryPoint.parse(entry_point)
+        a_driver = extension.Extension('con_driver', ep,
+                                       ep.load(require=False), None)
+
+        mgr = driver.DriverManager.make_test_instance(
+            a_driver, namespace=namespace
+        )
+        mgr._init_plugins([a_driver])
+        return mgr
+
+    def get_connection_with_mock_driver_manager(self, url, namespace):
+        mgr = self._get_driver_from_entry_point(
+            entry_point='monasca = ceilometer.storage.impl_monasca:Connection',
+            namespace='ceilometer.metering.storage')
+        return mgr.driver(url)
+
+    def get_publisher_with_mock_driver_manager(self, url, namespace):
+        mgr = self._get_driver_from_entry_point(
+            entry_point='monasca = ceilometer.publisher.monclient:'
+                        'MonascaPublisher',
+            namespace='ceilometer.publisher')
+        return mgr.driver(url)
 
     def setUp(self):
         super(TestApi, self).setUp()
@@ -56,19 +84,27 @@ class TestApi(test_base.BaseTestCase):
         self.CONF.import_opt('pipeline_cfg_file', 'ceilometer.pipeline')
         self.CONF.set_override(
             'pipeline_cfg_file',
-            self.path_get('etc/ceilometer/monasca_pipeline.yaml')
+            self.path_get('etc/ceilometer/pipeline.yaml')
         )
 
         self.CONF.import_opt('monasca_mappings',
                              'ceilometer.publisher.monasca_data_filter',
                              group='monasca')
+
         self.CONF.set_override(
             'monasca_mappings',
             self.path_get('etc/ceilometer/monasca_field_definitions.yaml'),
             group='monasca'
         )
 
-        with mock.patch("ceilometer.monasca_client.Client") as mock_client:
+        with mock.patch("ceilometer.monasca_client.Client") as mock_client,\
+                mock.patch('ceilometer.storage.get_connection') as \
+                get_storage_conn, \
+                mock.patch('ceilometer.publisher.get_publisher') as get_pub:
+
+            get_storage_conn.side_effect = (
+                self.get_connection_with_mock_driver_manager)
+            get_pub.side_effect = self.get_publisher_with_mock_driver_manager
             self.mock_mon_client = mock_client
             self.conn = storage.get_connection('monasca://127.0.0.1:8080',
                                                'ceilometer.metering.storage')
