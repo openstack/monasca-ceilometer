@@ -46,11 +46,11 @@ AVAILABLE_CAPABILITIES = {
     'meters': {'query': {'simple': True,
                          'metadata': False}},
     'resources': {'query': {'simple': True,
-                            'metadata': False}},
+                            'metadata': True}},
     'samples': {'pagination': False,
                 'groupby': False,
                 'query': {'simple': True,
-                          'metadata': False,
+                          'metadata': True,
                           'complex': False}},
     'statistics': {'groupby': False,
                    'query': {'simple': True,
@@ -88,6 +88,35 @@ class Connection(base.Connection):
     @staticmethod
     def _convert_to_dict(stats, cols):
         return {c: stats[i] for i, c in enumerate(cols)}
+
+    def _convert_metaquery(self, metaquery):
+        """Strip "metadata." from key and convert value to string
+
+        :param metaquery:  { 'metadata.KEY': VALUE, ... }
+        :returns: converted metaquery
+        """
+        query = {}
+        for k, v in metaquery.items():
+            key = k.split('.')[1]
+            if isinstance(v, basestring):
+                query[key] = v
+            else:
+                query[key] = str(int(v))
+        return query
+
+    def _match_metaquery_to_value_meta(self, query, value_meta):
+        """Check if metaquery matches value_meta
+
+        :param query: metaquery with converted format
+        :param value_meta: metadata from monasca
+        :returns: True for matched, False for not matched
+        """
+        if (len(query) > 0 and
+           (len(value_meta) == 0 or
+           not set(query.items()).issubset(set(value_meta.items())))):
+            return False
+        else:
+            return True
 
     def upgrade(self):
         pass
@@ -146,8 +175,9 @@ class Connection(base.Connection):
         if pagination:
             raise ceilometer.NotImplementedError('Pagination not implemented')
 
+        q = {}
         if metaquery:
-            raise ceilometer.NotImplementedError('Metaquery not implemented')
+            q = self._convert_metaquery(metaquery)
 
         if start_timestamp_op and start_timestamp_op != 'ge':
             raise ceilometer.NotImplementedError(('Start time op %s '
@@ -191,6 +221,9 @@ class Connection(base.Connection):
                     d = sample['dimensions']
                     m = self._convert_to_dict(
                         sample['measurements'][0], sample['columns'])
+                    vm = m['value_meta']
+                    if not self._match_metaquery_to_value_meta(q, vm):
+                        continue
                     if d.get('resource_id'):
                         yield api_models.Resource(
                             resource_id=d.get('resource_id'),
@@ -295,10 +328,9 @@ class Connection(base.Connection):
                                                  sample_filter.
                                                  end_timestamp_op)
 
+        q = {}
         if sample_filter.metaquery:
-            raise ceilometer.NotImplementedError('metaquery not '
-                                                 'implemented '
-                                                 'in get_samples')
+            q = self._convert_metaquery(sample_filter.metaquery)
 
         if sample_filter.message_id:
             raise ceilometer.NotImplementedError('message_id not '
@@ -345,7 +377,9 @@ class Connection(base.Connection):
             for measurement in sample['measurements']:
                 meas_dict = self._convert_to_dict(measurement,
                                                   sample['columns'])
-
+                vm = meas_dict['value_meta']
+                if not self._match_metaquery_to_value_meta(q, vm):
+                    continue
                 yield api_models.Sample(
                     source=d.get('source'),
                     counter_name=sample['name'],

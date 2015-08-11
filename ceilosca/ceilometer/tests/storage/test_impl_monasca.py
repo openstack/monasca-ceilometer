@@ -32,9 +32,6 @@ class TestGetResources(base.BaseTestCase):
             kwargs = dict(pagination=True)
             self.assertRaises(ceilometer.NotImplementedError,
                               lambda: list(conn.get_resources(**kwargs)))
-            kwargs = dict(metaquery=True)
-            self.assertRaises(ceilometer.NotImplementedError,
-                              lambda: list(conn.get_resources(**kwargs)))
             kwargs = dict(start_timestamp_op='le')
             self.assertRaises(ceilometer.NotImplementedError,
                               lambda: list(conn.get_resources(**kwargs)))
@@ -80,6 +77,28 @@ class TestGetResources(base.BaseTestCase):
                                   limit=1,
                                   start_time='1970-01-01T00:00:00Z'),
                              ml_mock.call_args_list[0][1])
+
+    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
+    def test_get_resources_simple_metaquery(self, mock_mdf):
+        with mock.patch("ceilometer.monasca_client.Client") as mock_client:
+            conn = impl_monasca.Connection("127.0.0.1:8080")
+            mnl_mock = mock_client().metrics_list
+            mnl_mock.return_value = [{'name': 'metric1',
+                                      'dimensions': {},
+                                      'value_meta': {'key': 'value1'}},
+                                     {'name': 'metric2',
+                                      'dimensions': {},
+                                      'value_meta': {'key': 'value2'}},
+                                     ]
+            kwargs = dict(metaquery={'metadata.key': 'value1'})
+            list(conn.get_resources(**kwargs))
+            ml_mock = mock_client().measurements_list
+            self.assertEqual(2, ml_mock.call_count)
+            self.assertEqual(dict(dimensions={},
+                                  name='metric2',
+                                  limit=1,
+                                  start_time='1970-01-01T00:00:00Z'),
+                             ml_mock.call_args_list[1][1])
 
 
 class MeterTest(base.BaseTestCase):
@@ -142,11 +161,6 @@ class TestGetSamples(base.BaseTestCase):
 
             sample_filter = storage.SampleFilter(meter='specific meter',
                                                  end_timestamp_op='>')
-            self.assertRaises(ceilometer.NotImplementedError,
-                              lambda: list(conn.get_samples(sample_filter)))
-
-            sample_filter = storage.SampleFilter(
-                meter='specific meter', metaquery='specific metaquery')
             self.assertRaises(ceilometer.NotImplementedError,
                               lambda: list(conn.get_samples(sample_filter)))
 
@@ -284,6 +298,25 @@ class TestGetSamples(base.BaseTestCase):
                 start_time='1970-01-01T00:00:00Z',
                 merge_metrics=True, name='specific meter',
                 dimensions=dict(source=sample_filter.source)),
+                ml_mock.call_args[1])
+            self.assertEqual(1, ml_mock.call_count)
+
+    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
+    def test_get_samples_simple_metaquery(self, mdf_mock):
+        with mock.patch("ceilometer.monasca_client.Client") as mock_client:
+            conn = impl_monasca.Connection("127.0.0.1:8080")
+            ml_mock = mock_client().measurements_list
+            ml_mock.return_value = (
+                TestGetSamples.dummy_get_samples_mocked_return_value)
+            sample_filter = storage.SampleFilter(
+                meter='specific meter',
+                metaquery={'metadata.key': u'value'})
+            list(conn.get_samples(sample_filter))
+            self.assertEqual(True, ml_mock.called)
+            self.assertEqual(dict(
+                dimensions={},
+                start_time='1970-01-01T00:00:00Z',
+                merge_metrics=True, name='specific meter'),
                 ml_mock.call_args[1])
             self.assertEqual(1, ml_mock.call_count)
 
@@ -508,7 +541,7 @@ class CapabilitiesTest(base.BaseTestCase):
                     'pagination': False,
                     'query':
                         {
-                            'complex': False, 'metadata': False, 'simple': True
+                            'complex': False, 'metadata': True, 'simple': True
                         }
                 },
             'samples':
@@ -518,7 +551,7 @@ class CapabilitiesTest(base.BaseTestCase):
                     'query':
                         {
                             'complex': False,
-                            'metadata': False,
+                            'metadata': True,
                             'simple': True
                         }
                 },
