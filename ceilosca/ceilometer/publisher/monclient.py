@@ -13,6 +13,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import os
 import time
 
 from oslo_config import cfg
@@ -55,11 +56,16 @@ monpub_opts = [
                default=3,
                help='Maximum number of retry attempts on a publishing '
                     'failure.'),
-    cfg.StrOpt('failure_report_path',
-               default='monclient_failures.txt',
-               help='File report of samples that failed to publish to'
-                    ' Monasca. These include samples that failed to '
-                    'publish on first attempt and failed samples that'
+    cfg.BoolOpt('archive_on_failure',
+                default=False,
+                help='When turned on, archives metrics in file system when'
+                     'publish to Monasca fails or metric publish maxes out'
+                     'retry attempts.'),
+    cfg.StrOpt('archive_path',
+               default='mon_pub_failures.txt',
+               help='File of metrics that failed to publish to '
+                    'Monasca. These include metrics that failed to '
+                    'publish on first attempt and failed metrics that'
                     ' maxed out their retries.'),
 ]
 
@@ -99,6 +105,14 @@ class MonascaPublisher(publisher.PublisherBase):
                 interval=cfg.CONF.monasca.retry_interval,
                 initial_delay=cfg.CONF.monasca.batch_polling_interval)
 
+        if cfg.CONF.monasca.archive_on_failure:
+            archive_path = cfg.CONF.monasca.archive_path
+            if not os.path.exists(archive_path):
+                archive_path = cfg.CONF.find_file(archive_path)
+
+            self.archive_handler = publisher.get_publisher('file://' +
+                                                           str(archive_path))
+
     def _publish_handler(self, func, metrics, batch=False):
         """Handles publishing and exceptions that arise."""
 
@@ -130,11 +144,11 @@ class MonascaPublisher(publisher.PublisherBase):
                 self.retry_counter.extend(
                     [0 * i for i in range(metric_count)])
             else:
-                # TODO(flush metric to file)
-                pass
+                if hasattr(self, 'archive_handler'):
+                    self.archive_handler.publish_samples(None, metrics)
         except Exception:
-            # TODO(flush metric to file)
-            pass
+            if hasattr(self, 'archive_handler'):
+                    self.archive_handler.publish_samples(None, metrics)
 
     def publish_samples(self, context, samples):
         """Main method called to publish samples."""
@@ -208,7 +222,10 @@ class MonascaPublisher(publisher.PublisherBase):
             # metrics that have maxed out their retry attempts
             for ctr in xrange(retry_count):
                 if self.retry_counter[ctr] > cfg.CONF.monasca.max_retries:
-                    # TODO(persist maxed-out metrics to file)
+                    if hasattr(self, 'archive_handler'):
+                        self.archive_handler.publish_samples(
+                            None,
+                            [self.retry_queue[ctr]])
                     LOG.debug(_('Removing metric %s from retry queue.'
                                 ' Metric retry maxed out retry attempts') %
                               self.retry_queue[ctr]['name'])
@@ -238,10 +255,6 @@ class MonascaPublisher(publisher.PublisherBase):
                     # if retry failed, increment the retry counter
                     self.retry_counter[ctr] += 1
                     ctr += 1
-
-    def flush_to_file(self):
-        # TODO(persist maxed-out metrics to file)
-        pass
 
     def publish_events(self, context, events):
         """Send an event message for publishing
