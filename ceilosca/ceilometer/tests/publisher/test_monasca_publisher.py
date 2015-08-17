@@ -20,6 +20,7 @@ import eventlet
 import mock
 from oslo_config import fixture as fixture_config
 from oslotest import base
+from oslotest import mockpatch
 
 from ceilometer import monasca_client as mon_client
 from ceilometer.publisher import monclient
@@ -107,6 +108,7 @@ class TestMonascaPublisher(base.BaseTestCase):
     def setUp(self):
         super(TestMonascaPublisher, self).setUp()
         self.CONF = self.useFixture(fixture_config.Config()).conf
+        self.CONF([], project='ceilometer', validate_default_values=True)
         self.parsed_url = mock.MagicMock()
         ksclient.KSClient = mock.MagicMock()
 
@@ -167,3 +169,25 @@ class TestMonascaPublisher(base.BaseTestCase):
             eventlet.sleep(5)
             self.assertEqual(4, mock_create.call_count)
             self.assertEqual(1, mapping_patch.called)
+
+    @mock.patch("ceilometer.publisher.monasca_data_filter."
+                "MonascaDataFilter._get_mapping",
+                side_effect=[field_mappings])
+    def test_publisher_archival_on_failure(self, mapping_patch):
+        self.CONF.set_override('archive_on_failure', True, group='monasca')
+        self.fake_publisher = mock.Mock()
+
+        self.useFixture(mockpatch.Patch(
+            'ceilometer.publisher.file.FilePublisher',
+            return_value=self.fake_publisher))
+
+        publisher = monclient.MonascaPublisher(self.parsed_url)
+        publisher.mon_client = mock.MagicMock()
+
+        with mock.patch.object(publisher.mon_client,
+                               'metrics_create') as mock_create:
+            mock_create.side_effect = Exception
+            metrics_archiver = self.fake_publisher.publish_samples
+            publisher.publish_samples(None, self.test_data)
+            self.assertEqual(1, metrics_archiver.called)
+            self.assertEqual(3, metrics_archiver.call_count)
