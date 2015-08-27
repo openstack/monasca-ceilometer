@@ -79,7 +79,7 @@ class MonascaPublisher(publisher.PublisherBase):
     """Publisher to publish samples to monasca using monasca-client.
 
     Example URL to place in pipeline.yaml:
-        - monclient://http://192.168.10.4:8080/v2.0
+        - monclient://http://192.168.10.4:8070/v2.0
     """
     def __init__(self, parsed_url):
         super(MonascaPublisher, self).__init__(parsed_url)
