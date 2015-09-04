@@ -53,7 +53,7 @@ disable_monasca_ui_role()
             rm $WORK_DIR/roles/monasca-ui/tasks/main.yml
             file_list=$(find $WORK_DIR/roles -type f -exec grep -l get_url: {} +)
             for filename in $file_list; do
-                sed '/get_url:/s/$/ timeout=600/' $filename
+                sed -i.bak '/get_url:/s/$/ timeout=600/' $filename
             done
         fi
 
