@@ -22,26 +22,26 @@ export CEILOSCA_CONF_FILES='pipeline.yaml monasca_field_definitions.yaml';
 
 setup_devstack()
 {
-       git clone -b $PREFERRED_BRANCH $DEVSTACK_REPO $DEVSTACK_DIR || true
-       cp deployer/devstack/local.conf $DEVSTACK_DIR
-       cp deployer/devstack/ceilometer $DEVSTACK_DIR/lib
-       pushd $DEVSTACK_DIR
-       ./unstack.sh || true
-       ./stack.sh
-       popd
+        git clone -b $PREFERRED_BRANCH $DEVSTACK_REPO $DEVSTACK_DIR || true
+        cp deployer/devstack/local.conf $DEVSTACK_DIR
+        cp deployer/devstack/ceilometer $DEVSTACK_DIR/lib
+        pushd $DEVSTACK_DIR
+        ./unstack.sh || true
+        ./stack.sh
+        popd
 }
 
 install_ansible()
 {
-	sudo apt-get install software-properties-common
-	sudo apt-add-repository -y ppa:ansible/ansible
-	sudo apt-get update
-	sudo apt-get -y install ansible
+	      sudo apt-get install software-properties-common
+	      sudo apt-add-repository -y ppa:ansible/ansible
+	      sudo apt-get update
+	      sudo apt-get -y install ansible
 }
 
 get_monasca_files()
 {
-	git clone $MONASCA_VAGRANT_REPO $WORK_DIR || true
+	      git clone $MONASCA_VAGRANT_REPO $WORK_DIR || true
         pushd $WORK_DIR
         ansible-galaxy install -r requirements.yml -p ./roles --ignore-errors
         popd
@@ -49,7 +49,14 @@ get_monasca_files()
 
 disable_monasca_ui_role()
 {
-	rm $WORK_DIR/roles/monasca-ui/tasks/main.yml
+        if [ -f $WORK_DIR/roles/monasca-ui/tasks/main.yml ]; then
+            rm $WORK_DIR/roles/monasca-ui/tasks/main.yml
+            file_list=$(find $WORK_DIR/roles -type f -exec grep -l get_url: {} +)
+            for filename in $file_list; do
+                sed '/get_url:/s/$/ timeout=600/' $filename
+            done
+        fi
+
 }
 
 disable_monasca_events_installation()
