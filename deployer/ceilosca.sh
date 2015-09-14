@@ -19,6 +19,10 @@ export CEILOSCA_DIR=${PWD}
 export CEILOSCA_FILES='ceilometer/monasca_client.py ceilometer/publisher/monasca_data_filter.py ceilometer/publisher/monclient.py ceilometer/storage/impl_monasca.py setup.cfg'
 export CEILOSCA_CONF_FILES='pipeline.yaml monasca_field_definitions.yaml';
 
+clear_env()
+{
+        unset OS_USERNAME OS_PASSWORD OS_PROJECT_NAME OS_AUTH_URL
+}
 
 setup_devstack()
 {
@@ -84,7 +88,7 @@ run_ceilosca()
         ansible-playbook -u $CEILOSCA_USER -c local -k -i "mini-mon,"  mini-mon.yml -e 'database_type=influxdb'
 }
 
-
+clear_env
 setup_devstack
 install_ansible
 get_monasca_files
