@@ -31,14 +31,14 @@ from monascaclient import exc
 
 monpub_opts = [
     cfg.BoolOpt('batch_mode',
-                default=False,
+                default=True,
                 help='Indicates whether samples are'
                      ' published in a batch.'),
     cfg.IntOpt('batch_count',
-               default=100,
+               default=1000,
                help='Maximum number of samples in a batch.'),
     cfg.IntOpt('batch_timeout',
-               default=18,
+               default=15,
                help='Maximum time interval(seconds) after which '
                     'samples are published in a batch.'),
     cfg.IntOpt('batch_polling_interval',
