@@ -1,0 +1,99 @@
+{
+    "CeilometerMeters.list_meters": [
+        {
+            "runner": {
+                "type": "rps",
+                "times": 300,
+                "rps": 10
+            },
+            "context": {
+                "users": {
+                    "tenants": 40,
+                    "users_per_tenant": 5
+                }
+            },
+            "sla": {
+                "max_seconds_per_iteration": 418,
+                "failure_rate": {
+                    "max": 5
+                }
+            }
+        }
+    ],
+    "CeilometerResource.list_resources": [
+        {
+            "runner": {
+                "type": "rps",
+                "times": 300,
+                "rps": 100
+            },
+            "context": {
+                "users": {
+                    "tenants": 40,
+                    "users_per_tenant": 5
+                }
+            },
+            "sla": {
+                "max_seconds_per_iteration": 180,
+                "failure_rate": {
+                    "max": 5
+                }
+            }
+        }
+    ],
+    "CeilometerQueries.query_samples": [
+        {
+            "args": {
+                "filter": '{"=": {"counter_name": "instance"}}',
+                "orderby": null,
+                "limit": 10
+            },
+            "runner": {
+                "type": "rps",
+                "times": 300,
+                "rps": 100
+            },
+            "context": {
+                "users": {
+                    "tenants": 40,
+                    "users_per_tenant": 5
+                }
+            },
+            "sla": {
+                "max_seconds_per_iteration": 180,
+                "failure_rate": {
+                    "max": 5
+                }
+            }
+        }
+    ],
+    "CeilometerSamples.list_samples": [
+        {
+            "runner": {
+                "type": "rps",
+                "times": 300,
+                "rps": 100
+            },
+            "context": {
+                "users": {
+                    "tenants": 40,
+                    "users_per_tenant": 5
+                },
+                "ceilometer": {
+                    "counter_name": "image",
+                    "counter_type": "gauge",
+                    "counter_unit": "image",
+                    "counter_volume": 1.0,
+                    "resources_per_tenant": 3,
+                    "samples_per_resource": 3
+                }
+            },
+            "sla": {
+                "max_seconds_per_iteration": 40,
+                "failure_rate": {
+                    "max": 5
+                }
+            }
+        }
+    ]
+}
