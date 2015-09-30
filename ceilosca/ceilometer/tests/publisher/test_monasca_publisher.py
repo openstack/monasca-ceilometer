@@ -116,7 +116,7 @@ class TestMonascaPublisher(base.BaseTestCase):
                 "MonascaDataFilter._get_mapping",
                 side_effect=[field_mappings])
     def test_publisher_publish(self, mapping_patch):
-
+        self.CONF.set_override('batch_mode', False, group='monasca')
         publisher = monclient.MonascaPublisher(self.parsed_url)
         publisher.mon_client = mock.MagicMock()
 
@@ -175,6 +175,7 @@ class TestMonascaPublisher(base.BaseTestCase):
                 side_effect=[field_mappings])
     def test_publisher_archival_on_failure(self, mapping_patch):
         self.CONF.set_override('archive_on_failure', True, group='monasca')
+        self.CONF.set_override('batch_mode', False, group='monasca')
         self.fake_publisher = mock.Mock()
 
         self.useFixture(mockpatch.Patch(
