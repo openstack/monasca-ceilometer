@@ -68,8 +68,11 @@ exec /usr/bin/java -Dfile.encoding=UTF-8 –Xmx1g -cp /opt/monasca/monasca-api.j
 
 To:
 
-```exec /usr/bin/java -Dfile.encoding=UTF-8 -Xmx4g -cp /opt/monasca/monasca-api.jar:/opt/monasca/vertica/vertica_jdbc.jar monasca.api.MonApiApplication server /etc/monasca/api-config.yml
 ```
+exec /usr/bin/java -Dfile.encoding=UTF-8 -Xmx4g -cp /opt/monasca/monasca-api.jar:/opt/monasca/vertica/vertica_jdbc.jar monasca.api.MonApiApplication server /etc/monasca/api-config.yml
+```
+
+Then re-start the Monasca API service
 
 ```
 sudo service monasca-api restart
@@ -92,6 +95,8 @@ To:
 ```
 exec /usr/bin/java -Dfile.encoding=UTF-8 -Xmx4g -cp /opt/monasca/monasca-persister.jar:/opt/monasca/vertica/vertica_jdbc.jar monasca.persister.PersisterApplication server /etc/monasca/persister-config.yml
 ```
+
+Then re-start the Monasca Persister service.
 
 ```
 sudo service monasca-persister restart
@@ -117,4 +122,4 @@ To:
 pipeline = request_id api-server
 ```
 
-and re-start the ceilometer api.
+Then re-start the Ceilometer API.
