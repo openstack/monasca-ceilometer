@@ -363,7 +363,8 @@ def main():
     elif args.mode == 'notify-client':
         threads_spawner(args.threads, notifier, transport, args.messages,
                         args.wait_after_msg, args.timeout, args.service,
-                        args.action)
+                        args.action, args.project_id, args.resource_id,
+                        args.load_date)
     elif args.mode == 'rpc-client':
         start = datetime.datetime.now()
         threads_spawner(args.threads, send_msg, transport, target,
