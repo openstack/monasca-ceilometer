@@ -14,8 +14,11 @@
 # under the License.
 
 import collections
+import datetime
 import dateutil.parser
 import mock
+from oslo_config import fixture as fixture_config
+from oslo_utils import timeutils
 from oslotest import base
 
 import ceilometer
@@ -149,6 +152,17 @@ class TestGetSamples(base.BaseTestCase):
           u'columns': [u'timestamp', u'value', u'value_meta'],
           u'name': u'image'}])
 
+    dummy_metrics_mocked_return_value = (
+        [{u'dimensions': {},
+          u'id': u'2015-04-14T18:42:31Z',
+          u'name': u'specific meter'}])
+
+    def setUp(self):
+        super(TestGetSamples, self).setUp()
+        self.CONF = self.useFixture(fixture_config.Config()).conf
+        self.CONF([], project='ceilometer', validate_default_values=True)
+        self.CONF.set_override('query_concurrency_limit', 3, group='monasca')
+
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_get_samples_not_implemented_params(self, mdf_mock):
         with mock.patch("ceilometer.monasca_client.Client"):
@@ -169,162 +183,255 @@ class TestGetSamples(base.BaseTestCase):
             self.assertRaises(ceilometer.NotImplementedError,
                               lambda: list(conn.get_samples(sample_filter)))
 
+    def get_concurrent_task_args(self, conn, start_time, end_time,
+                                 sample_filter, dimensions=None, limit=None):
+
+        delta = ((end_time - start_time) /
+                 self.CONF.monasca.query_concurrency_limit)
+        expected_args_list = []
+        for start, end in impl_monasca.Connection.get_next_time_delta(
+                conn, start_time, end_time, delta):
+            if limit:
+                expected_args_list.append(dict(
+                    dimensions=dimensions if dimensions else {},
+                    start_time=timeutils.isotime(start),
+                    start_timestamp_op=sample_filter.start_timestamp_op,
+                    merge_metrics=False, name='specific meter',
+                    limit=limit,
+                    end_time=timeutils.isotime(end)))
+            else:
+                expected_args_list.append(dict(
+                    dimensions=dimensions if dimensions else {},
+                    start_time=timeutils.isotime(start),
+                    start_timestamp_op=sample_filter.start_timestamp_op,
+                    merge_metrics=False, name='specific meter',
+                    end_time=timeutils.isotime(end)))
+
+        return expected_args_list
+
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_get_samples_name(self, mdf_mock):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
+
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                TestGetSamples.dummy_metrics_mocked_return_value
+            )
             ml_mock = mock_client().measurements_list
             ml_mock.return_value = (
                 TestGetSamples.dummy_get_samples_mocked_return_value)
+
+            start_time = datetime.datetime(1970, 1, 1)
+            end_time = datetime.datetime(2015, 4, 20)
+
             sample_filter = storage.SampleFilter(
-                meter='specific meter', end_timestamp='2015-04-20T00:00:00Z')
+                meter='specific meter',
+                end_timestamp=timeutils.isotime(end_time))
+
             list(conn.get_samples(sample_filter))
             self.assertEqual(True, ml_mock.called)
-            self.assertEqual(dict(
-                dimensions={},
-                start_time='1970-01-01T00:00:00Z',
-                merge_metrics=True, name='specific meter',
-                end_time=str(sample_filter.end_timestamp)),
-                ml_mock.call_args[1])
-            self.assertEqual(1, ml_mock.call_count)
+
+            expected_args_list = self.get_concurrent_task_args(
+                conn, start_time, end_time, sample_filter)
+            self.assertEqual(3, ml_mock.call_count)
+            (self.assertIn(call_arg[1], expected_args_list)
+             for call_arg in ml_mock.call_args_list)
 
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_get_samples_start_timestamp_filter(self, mdf_mock):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
+
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                TestGetSamples.dummy_metrics_mocked_return_value
+            )
             ml_mock = mock_client().measurements_list
             ml_mock.return_value = (
                 TestGetSamples.dummy_get_samples_mocked_return_value)
+
+            start_time = datetime.datetime(2015, 3, 20)
+            end_time = datetime.datetime.utcnow()
+
             sample_filter = storage.SampleFilter(
                 meter='specific meter',
-                start_timestamp='2015-03-20T00:00:00Z',
+                start_timestamp=timeutils.isotime(start_time),
                 start_timestamp_op='ge')
             list(conn.get_samples(sample_filter))
             self.assertEqual(True, ml_mock.called)
-            self.assertEqual(dict(
-                dimensions={},
-                start_time=str(sample_filter.start_timestamp),
-                start_timestamp_op=sample_filter.start_timestamp_op,
-                merge_metrics=True, name='specific meter'),
-                ml_mock.call_args[1])
-            self.assertEqual(1, ml_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_end_timestamp_filter(self, mdf_mock):
-        with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
-            ml_mock = mock_client().measurements_list
-            ml_mock.return_value = (
-                TestGetSamples.dummy_get_samples_mocked_return_value)
-            sample_filter = storage.SampleFilter(
-                meter='specific meter', end_timestamp='2015-04-20T00:00:00Z')
-            list(conn.get_samples(sample_filter))
-            self.assertEqual(True, ml_mock.called)
-            self.assertEqual(dict(
-                dimensions={},
-                start_time='1970-01-01T00:00:00Z',
-                merge_metrics=True, name='specific meter',
-                end_time=str(sample_filter.end_timestamp)),
-                ml_mock.call_args[1])
-            self.assertEqual(1, ml_mock.call_count)
+            expected_args_list = self.get_concurrent_task_args(conn,
+                                                               start_time,
+                                                               end_time,
+                                                               sample_filter)
+            self.assertEqual(3, ml_mock.call_count)
+            (self.assertIn(call_arg[1], expected_args_list)
+             for call_arg in ml_mock.call_args_list)
 
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_get_samples_limit(self, mdf_mock):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
+
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                TestGetSamples.dummy_metrics_mocked_return_value
+            )
             ml_mock = mock_client().measurements_list
             ml_mock.return_value = (
                 TestGetSamples.dummy_get_samples_mocked_return_value)
+
+            start_time = datetime.datetime(1970, 1, 1)
+            end_time = datetime.datetime(2015, 4, 20)
+
             sample_filter = storage.SampleFilter(
                 meter='specific meter', end_timestamp='2015-04-20T00:00:00Z')
             list(conn.get_samples(sample_filter, limit=50))
             self.assertEqual(True, ml_mock.called)
-            self.assertEqual(dict(
-                dimensions={},
-                start_time='1970-01-01T00:00:00Z',
-                merge_metrics=True, name='specific meter', limit=50,
-                end_time=str(sample_filter.end_timestamp)),
-                ml_mock.call_args[1])
-            self.assertEqual(1, ml_mock.call_count)
+
+            expected_args_list = self.get_concurrent_task_args(conn,
+                                                               start_time,
+                                                               end_time,
+                                                               sample_filter,
+                                                               limit=50)
+
+            self.assertEqual(3, ml_mock.call_count)
+            (self.assertIn(call_arg[1], expected_args_list)
+             for call_arg in ml_mock.call_args_list)
 
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_get_samples_project_filter(self, mock_mdf):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                [{u'dimensions': dict(project_id='specific project'),
+                  u'id': u'2015-04-14T18:42:31Z',
+                  u'name': u'specific meter'}]
+            )
+
             ml_mock = mock_client().measurements_list
             ml_mock.return_value = (
                 TestGetSamples.dummy_get_samples_mocked_return_value)
+
+            start_time = datetime.datetime(1970, 1, 1)
+            end_time = datetime.datetime.utcnow()
             sample_filter = storage.SampleFilter(meter='specific meter',
                                                  project='specific project')
             list(conn.get_samples(sample_filter))
             self.assertEqual(True, ml_mock.called)
-            self.assertEqual(dict(
-                start_time='1970-01-01T00:00:00Z',
-                merge_metrics=True, name='specific meter',
-                dimensions=dict(project_id=sample_filter.project)),
-                ml_mock.call_args[1])
-            self.assertEqual(1, ml_mock.call_count)
+
+            expected_args_list = self.get_concurrent_task_args(
+                conn, start_time, end_time, sample_filter,
+                dimensions=dict(project_id=sample_filter.project))
+
+            self.assertEqual(3, ml_mock.call_count)
+            (self.assertIn(call_arg[1], expected_args_list)
+             for call_arg in ml_mock.call_args_list)
 
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_get_samples_resource_filter(self, mock_mdf):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                [{u'dimensions': dict(resource_id='specific resource'),
+                  u'id': u'2015-04-14T18:42:31Z',
+                  u'name': u'specific meter'}]
+            )
             ml_mock = mock_client().measurements_list
             ml_mock.return_value = (
                 TestGetSamples.dummy_get_samples_mocked_return_value)
+
+            start_time = datetime.datetime(1970, 1, 1)
+            end_time = datetime.datetime.utcnow()
             sample_filter = storage.SampleFilter(meter='specific meter',
                                                  resource='specific resource')
             list(conn.get_samples(sample_filter))
             self.assertEqual(True, ml_mock.called)
-            self.assertEqual(dict(
-                start_time='1970-01-01T00:00:00Z',
-                merge_metrics=True, name='specific meter',
-                dimensions=dict(resource_id=sample_filter.resource)),
-                ml_mock.call_args[1])
-            self.assertEqual(1, ml_mock.call_count)
+
+            expected_args_list = self.get_concurrent_task_args(
+                conn, start_time, end_time, sample_filter,
+                dimensions=dict(resource_id=sample_filter.resource))
+
+            self.assertEqual(3, ml_mock.call_count)
+            (self.assertIn(call_arg[1], expected_args_list)
+             for call_arg in ml_mock.call_args_list)
 
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_get_samples_source_filter(self, mdf_mock):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                [{u'dimensions': dict(source='specific source'),
+                  u'id': u'2015-04-14T18:42:31Z',
+                  u'name': u'specific meter'}]
+            )
             ml_mock = mock_client().measurements_list
             ml_mock.return_value = (
                 TestGetSamples.dummy_get_samples_mocked_return_value)
+
+            start_time = datetime.datetime(1970, 1, 1)
+            end_time = datetime.datetime.utcnow()
             sample_filter = storage.SampleFilter(meter='specific meter',
                                                  source='specific source')
             list(conn.get_samples(sample_filter))
             self.assertEqual(True, ml_mock.called)
-            self.assertEqual(dict(
-                start_time='1970-01-01T00:00:00Z',
-                merge_metrics=True, name='specific meter',
-                dimensions=dict(source=sample_filter.source)),
-                ml_mock.call_args[1])
-            self.assertEqual(1, ml_mock.call_count)
+
+            expected_args_list = self.get_concurrent_task_args(
+                conn, start_time, end_time, sample_filter,
+                dimensions=dict(source=sample_filter.source))
+
+            self.assertEqual(3, ml_mock.call_count)
+            (self.assertIn(call_arg[1], expected_args_list)
+             for call_arg in ml_mock.call_args_list)
 
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_get_samples_simple_metaquery(self, mdf_mock):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                TestGetSamples.dummy_metrics_mocked_return_value
+            )
             ml_mock = mock_client().measurements_list
             ml_mock.return_value = (
                 TestGetSamples.dummy_get_samples_mocked_return_value)
+
+            start_time = datetime.datetime(1970, 1, 1)
+            end_time = datetime.datetime.utcnow()
             sample_filter = storage.SampleFilter(
                 meter='specific meter',
                 metaquery={'metadata.key': u'value'})
             list(conn.get_samples(sample_filter))
             self.assertEqual(True, ml_mock.called)
-            self.assertEqual(dict(
-                dimensions={},
-                start_time='1970-01-01T00:00:00Z',
-                merge_metrics=True, name='specific meter'),
-                ml_mock.call_args[1])
-            self.assertEqual(1, ml_mock.call_count)
+
+            expected_args_list = self.get_concurrent_task_args(
+                conn, start_time, end_time, sample_filter)
+
+            self.assertEqual(3, ml_mock.call_count)
+            (self.assertIn(call_arg[1], expected_args_list)
+             for call_arg in ml_mock.call_args_list)
 
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_get_samples_results(self, mdf_mock):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                [{u'dimensions': {
+                    'source': 'some source',
+                    'project_id': 'some project ID',
+                    'resource_id': 'some resource ID',
+                    'type': 'some type',
+                    'unit': 'some unit'},
+                  u'id': u'2015-04-14T18:42:31Z',
+                  u'name': u'image'}]
+            )
             ml_mock = mock_client().measurements_list
+            # TODO(this test case needs more work)
             ml_mock.return_value = (
                 [{u'dimensions': {
                     'source': 'some source',
@@ -338,6 +445,7 @@ class TestGetSamples(base.BaseTestCase):
                   u'id': u'2015-04-14T18:42:31Z',
                   u'columns': [u'timestamp', u'value', u'value_meta'],
                   u'name': u'image'}])
+
             sample_filter = storage.SampleFilter(
                 meter='specific meter',
                 start_timestamp='2015-03-20T00:00:00Z')
@@ -378,7 +486,7 @@ class TestGetSamples(base.BaseTestCase):
                                  get('measurements')[0][0]))
             self.assertEqual(results[0].user_id, None)
 
-            self.assertEqual(1, ml_mock.call_count)
+            self.assertEqual(3, ml_mock.call_count)
 
 
 class MeterStatisticsTest(base.BaseTestCase):
