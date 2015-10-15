@@ -86,7 +86,7 @@ run_ceilosca()
 {
         cd $WORK_DIR
         ansible-playbook -u $CEILOSCA_USER -c local -k -i "devstack,"  devstack.yml
-        ansible-playbook -u $CEILOSCA_USER -c local -k -i "mini-mon,"  mini-mon.yml -e 'database_type=influxdb'
+        ansible-playbook -u $CEILOSCA_USER -c local -k -i "mini-mon,"  mini-mon.yml -e 'database_type=influxdb' -e 'influxdb_version=0.9.4.2'
 }
 
 clear_env
