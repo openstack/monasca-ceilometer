@@ -1,7 +1,7 @@
 #!/bin/bash -xe
 
-export MONASCA_VAGRANT_REPO=https://github.com/stackforge/monasca-vagrant
-export DEVSTACK_REPO=https://github.com/openstack-dev/devstack.git
+export MONASCA_VAGRANT_REPO=https://git.openstack.org/openstack/monasca-vagrant
+export DEVSTACK_REPO=https://git.openstack.org/openstack-dev/devstack.git
 
 export BASE_DIR=~
 export WORK_DIR=$BASE_DIR/monasca-vagrant

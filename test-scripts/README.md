@@ -1,6 +1,6 @@
 **Instructions to install, setup and use Rally**
 
-1. Download rally: git clone https://github.com/stackforge/rally
+1. Download rally: git clone https://git.openstack.org/openstack/rally
   (Ensure install libffi-dev libssl-dev libxml2 are installed)
 
 2. Run ./install_rally.sh with the -v option to install Rally in its

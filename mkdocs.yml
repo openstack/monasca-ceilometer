@@ -1,4 +1,4 @@
 site_name:
     monasca-ceilometer
 repo_url:
-    'https://github.com/stackforge/monasca-ceilometer'
+    'https://git.openstack.org/openstack/monasca-ceilometer'

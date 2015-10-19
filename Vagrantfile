@@ -9,7 +9,7 @@
 $script = <<SCRIPT
 sudo apt-get update
 sudo apt-get install -y git
-git clone https://github.com/stackforge/monasca-ceilometer
+git clone https://git.openstack.org/openstack/monasca-ceilometer
 cd monasca-ceilometer
 deployer/ceilosca.sh
 SCRIPT
