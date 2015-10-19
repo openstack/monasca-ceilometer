@@ -3,7 +3,9 @@ monasca-ceilometer
 
 Python plugin and storage driver for Ceilometer to send samples to monasca-api
 
-### Installation Instructions
+### Installation Instructions for setting up Ceilosca manually
+
+*To set up ceilosca automatically, read the instructions in deployer/README.md or use the included Vagrantfile*
 
 Assumes that an active monasca-api server is running.
 
