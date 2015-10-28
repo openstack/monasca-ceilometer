@@ -17,15 +17,12 @@
 """
 
 import datetime
+
 from monascaclient import exc as monasca_exc
 from oslo_config import cfg
 from oslo_log import log
-from oslo_service import service as os_service
 from oslo_utils import netutils
 from oslo_utils import timeutils
-
-import eventlet
-from eventlet.queue import Empty
 
 import ceilometer
 from ceilometer.i18n import _
@@ -41,10 +38,6 @@ OPTS = [
                default=300,
                help='Default period (in seconds) to use for querying stats '
                     'in case no period specified in the stats API call.'),
-    cfg.IntOpt('query_concurrency_limit',
-               default=30,
-               help='Number of concurrent queries to use for querying '
-                    'Monasca API'),
 ]
 
 cfg.CONF.register_opts(OPTS, group='monasca')
@@ -120,8 +113,7 @@ class Connection(base.Connection):
         :param value_meta: metadata from monasca
         :returns: True for matched, False for not matched
         """
-        if (len(query) > 0 and
-           (len(value_meta) == 0 or
+        if (query and (len(value_meta) == 0 or
            not set(query.items()).issubset(set(value_meta.items())))):
             return False
         else:
@@ -183,7 +175,6 @@ class Connection(base.Connection):
         """
         if limit == 0:
             return
-        # TODO(Implement limit correctly)
 
         q = {}
         if metaquery:
@@ -222,6 +213,7 @@ class Connection(base.Connection):
         _search_args = {k: v for k, v in _search_args.items()
                         if v is not None}
 
+        result_count = 0
         for metric in self.mc.metrics_list(
                 **dict(dimensions=dims_filter)):
             _search_args['name'] = metric['name']
@@ -235,6 +227,8 @@ class Connection(base.Connection):
                     if not self._match_metaquery_to_value_meta(q, vm):
                         continue
                     if d.get('resource_id'):
+                        result_count += 1
+
                         yield api_models.Resource(
                             resource_id=d.get('resource_id'),
                             first_sample_timestamp=(
@@ -243,8 +237,12 @@ class Connection(base.Connection):
                             project_id=d.get('project_id'),
                             source=d.get('source'),
                             user_id=d.get('user_id'),
-                            metadata=m['value_meta'],
+                            metadata=m['value_meta']
                         )
+
+                        if result_count == limit:
+                            return
+
             except monasca_exc.HTTPConflict:
                 pass
 
@@ -296,125 +294,13 @@ class Connection(base.Connection):
                 source=metric['dimensions'].get('source'),
                 user_id=metric['dimensions'].get('user_id'))
 
-    def get_measurements(self, result_queue, metric_name, metric_dimensions,
-                         meta_q, start_ts, end_ts, start_op, end_op, limit):
-
-        start_ts = timeutils.isotime(start_ts)
-        end_ts = timeutils.isotime(end_ts)
-
-        _search_args = dict(name=metric_name,
-                            start_time=start_ts,
-                            start_timestamp_op=start_op,
-                            end_time=end_ts,
-                            end_timestamp_op=end_op,
-                            merge_metrics=False,
-                            limit=limit,
-                            dimensions=metric_dimensions)
-
-        _search_args = {k: v for k, v in _search_args.items()
-                        if v is not None}
-
-        for sample in self.mc.measurements_list(**_search_args):
-            LOG.debug(_('Retrieved sample: %s'), sample)
-
-            d = sample['dimensions']
-            for measurement in sample['measurements']:
-                meas_dict = self._convert_to_dict(measurement,
-                                                  sample['columns'])
-                vm = meas_dict['value_meta']
-                if not self._match_metaquery_to_value_meta(meta_q, vm):
-                    continue
-                result_queue.put(api_models.Sample(
-                    source=d.get('source'),
-                    counter_name=sample['name'],
-                    counter_type=d.get('type'),
-                    counter_unit=d.get('unit'),
-                    counter_volume=meas_dict['value'],
-                    user_id=d.get('user_id'),
-                    project_id=d.get('project_id'),
-                    resource_id=d.get('resource_id'),
-                    timestamp=timeutils.parse_isotime(meas_dict['timestamp']),
-                    resource_metadata=meas_dict['value_meta'],
-                    message_id=sample['id'],
-                    message_signature='',
-                    recorded_at=(
-                        timeutils.parse_isotime(meas_dict['timestamp']))))
-
-    def get_next_time_delta(self, start, end, delta):
-        # Gets next time window
-        curr = start
-        while curr < end:
-            next = curr + delta
-            yield curr, next
-            curr = next
-
-    def get_next_task_args(self, start_timestamp=None, end_timestamp=None,
-                           delta=None, **kwargs):
-
-        # Yields next set of measurement related args
-        metrics = self.mc.metrics_list(**kwargs)
-        has_ts = start_timestamp and end_timestamp and delta
-        if has_ts:
-            for start, end in self.get_next_time_delta(
-                    start_timestamp,
-                    end_timestamp,
-                    delta):
-                for metric in metrics:
-                    task = {'metric': metric['name'],
-                            'dimension': metric['dimensions'],
-                            'start_ts': start,
-                            'end_ts': end}
-                    LOG.debug(_('next task is : %s'), task)
-                    yield task
-        else:
-            for metric in metrics:
-                task = {'metric': metric['name'],
-                        'dimension': metric['dimensions']
-                        }
-                LOG.debug(_('next task is : %s'), task)
-                yield task
-
-    def has_more_results(self, result_queue, t_pool):
-        if result_queue.empty() and t_pool.pool.running() == 0:
-            return False
-        return True
-
-    def fetch_from_queue(self, result_queue, t_pool):
-        # Fetches result from queue in non-blocking way
-        try:
-            result = result_queue.get_nowait()
-            LOG.debug(_('Retrieved result : %s'), result)
-            return result
-        except Empty:
-            # if no data in queue, yield to work threads
-            # to give them a chance
-            if t_pool.pool.running() > 0:
-                eventlet.sleep(0)
-
-    def get_results(self, result_queue, t_pool, limit=None, result_count=None):
-        # Inspect and yield results
-        if limit:
-            while result_count < limit:
-                if not self.has_more_results(result_queue, t_pool):
-                    break
-                result = self.fetch_from_queue(result_queue, t_pool)
-                if result:
-                    yield result
-                    result_count += 1
-        else:
-            while True:
-                if not self.has_more_results(result_queue, t_pool):
-                    break
-                result = self.fetch_from_queue(result_queue, t_pool)
-                if result:
-                    yield result
-
     def get_samples(self, sample_filter, limit=None):
         """Return an iterable of dictionaries containing sample information.
 
         {
           'source': source of the resource,
-          'counter_name': name of the resource,
+          'counter_name': name of the resource,if groupby:
+            raise ceilometer.NotImplementedError('Groupby not implemented')
           'counter_type': type of the sample (gauge, delta, cumulative),
           'counter_unit': unit of the sample,
           'counter_volume': volume of the sample,
@@ -431,10 +317,9 @@ class Connection(base.Connection):
         :param sample_filter: constraints for the sample search.
         :param limit: Maximum number of results to return.
         """
-        # Initialize pool of green work threads and queue to handle results
-        thread_pool = os_service.threadgroup.ThreadGroup(
-            thread_pool_size=cfg.CONF.monasca.query_concurrency_limit)
-        result_queue = eventlet.queue.Queue()
+
+        if limit == 0:
+            return
 
         if not sample_filter or not sample_filter.meter:
             raise ceilometer.NotImplementedError(
@@ -469,9 +354,6 @@ class Connection(base.Connection):
         if not sample_filter.end_timestamp:
             sample_filter.end_timestamp = datetime.datetime.utcnow()
 
-        delta = sample_filter.end_timestamp - sample_filter.start_timestamp
-        delta = delta / cfg.CONF.monasca.query_concurrency_limit
-
         _dimensions = dict(
             user_id=sample_filter.user,
             project_id=sample_filter.project,
@@ -484,36 +366,51 @@ class Connection(base.Connection):
         _metric_args = dict(name=sample_filter.meter,
                             dimensions=_dimensions)
 
-        if limit:
-            result_count = 0
+        start_ts = timeutils.isotime(sample_filter.start_timestamp)
+        end_ts = timeutils.isotime(sample_filter.end_timestamp)
 
-        for task_cnt, task in enumerate(self.get_next_task_args(
-                sample_filter.start_timestamp, sample_filter.end_timestamp,
-                delta, **_metric_args)):
-            # Spawn query_concurrency_limit number of green threads
-            # simultaneously to fetch measurements
-            thread_pool.add_thread(self.get_measurements,
-                                   result_queue,
-                                   task['metric'],
-                                   task['dimension'],
-                                   q,
-                                   task['start_ts'],
-                                   task['end_ts'],
-                                   sample_filter.start_timestamp_op,
-                                   sample_filter.end_timestamp_op,
-                                   limit)
-            # For every query_conncurrency_limit set of tasks,
-            # consume data from queue and yield before moving on to
-            # next set of tasks.
-            if (task_cnt + 1) % cfg.CONF.monasca.query_concurrency_limit == 0:
-                for result in self.get_results(result_queue, thread_pool,
-                                               limit,
-                                               result_count=result_count if
-                                               limit else None):
-                    yield result
+        _search_args = dict(
+            start_time=start_ts,
+            start_timestamp_op=sample_filter.start_timestamp_op,
+            end_time=end_ts,
+            end_timestamp_op=sample_filter.end_timestamp_op,
+            merge_metrics=False
+        )
 
-        # Shutdown threadpool
-        thread_pool.stop()
+        result_count = 0
+        for metric in self.mc.metrics_list(
+                **_metric_args):
+            _search_args['name'] = metric['name']
+            _search_args['dimensions'] = metric['dimensions']
+            _search_args = {k: v for k, v in _search_args.items()
+                            if v is not None}
+
+            for sample in self.mc.measurements_list(**_search_args):
+                d = sample['dimensions']
+                for meas in sample['measurements']:
+                    m = self._convert_to_dict(
+                        meas, sample['columns'])
+                    vm = m['value_meta']
+                    if not self._match_metaquery_to_value_meta(q, vm):
+                        continue
+                    result_count += 1
+                    yield api_models.Sample(
+                        source=d.get('source'),
+                        counter_name=sample['name'],
+                        counter_type=d.get('type'),
+                        counter_unit=d.get('unit'),
+                        counter_volume=m['value'],
+                        user_id=d.get('user_id'),
+                        project_id=d.get('project_id'),
+                        resource_id=d.get('resource_id'),
+                        timestamp=timeutils.parse_isotime(m['timestamp']),
+                        resource_metadata=m['value_meta'],
+                        message_id=sample['id'],
+                        message_signature='',
+                        recorded_at=(timeutils.parse_isotime(m['timestamp'])))
+
+                    if result_count == limit:
+                        return
 
     def get_meter_statistics(self, filter, period=None, groupby=None,
                              aggregate=None):
@@ -610,12 +507,10 @@ class Connection(base.Connection):
                                 dimensions=dims_filter)
             group_stats_list = []
 
-            for task_cnt, task in enumerate(
-                    self.get_next_task_args(**_metric_args)):
-
+            for metric in self.mc.metrics_list(**_metric_args):
                 _search_args = dict(
-                    name=task['metric'],
-                    dimensions=task['dimension'],
+                    name=metric['name'],
+                    dimensions=metric['dimensions'],
                     start_time=filter.start_timestamp,
                     end_time=filter.end_timestamp,
                     period=period,
