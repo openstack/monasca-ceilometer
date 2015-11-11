@@ -20,6 +20,7 @@ import datetime
 from monascaclient import exc as monasca_exc
 from oslo_config import cfg
 from oslo_log import log
+from oslo_service import service as os_service
 from oslo_utils import netutils
 from oslo_utils import timeutils
 
@@ -29,8 +30,6 @@ from eventlet.queue import Empty
 import ceilometer
 from ceilometer.i18n import _
 from ceilometer import monasca_client
-
-from ceilometer.openstack.common import threadgroup
 from ceilometer.publisher.monasca_data_filter import MonascaDataFilter
 from ceilometer.storage import base
 from ceilometer.storage import models as api_models
@@ -160,7 +159,7 @@ class Connection(base.Connection):
     def get_resources(self, user=None, project=None, source=None,
                       start_timestamp=None, start_timestamp_op=None,
                       end_timestamp=None, end_timestamp_op=None,
-                      metaquery=None, resource=None, pagination=None):
+                      metaquery=None, resource=None, limit=None):
         """Return an iterable of dictionaries containing resource information.
 
         { 'resource_id': UUID of the resource,
@@ -180,10 +179,11 @@ class Connection(base.Connection):
         :param end_timestamp_op: Optional end time operator, like lt, le.
         :param metaquery: Optional dict with metadata to match on.
         :param resource: Optional resource filter.
-        :param pagination: Optional pagination query.
+        :param limit: Maximum number of results to return.
         """
-        if pagination:
-            raise ceilometer.NotImplementedError('Pagination not implemented')
+        if limit == 0:
+            return
+        # TODO(Implement limit correctly)
 
         q = {}
         if metaquery:
@@ -249,7 +249,7 @@ class Connection(base.Connection):
                 pass
 
     def get_meters(self, user=None, project=None, resource=None, source=None,
-                   limit=None, metaquery=None, pagination=None):
+                   metaquery=None, limit=None):
         """Return an iterable of dictionaries containing meter information.
 
         { 'name': name of the meter,
@@ -263,12 +263,11 @@ class Connection(base.Connection):
         :param project: Optional ID for project that owns the resource.
         :param resource: Optional resource filter.
         :param source: Optional source filter.
-        :param limit: Maximum number of results to return.
         :param metaquery: Optional dict with metadata to match on.
-        :param pagination: Optional pagination query.
+        :param limit: Maximum number of results to return.
         """
-        if pagination:
-            raise ceilometer.NotImplementedError('Pagination not implemented')
+        if limit == 0:
+            return
 
         if metaquery:
             raise ceilometer.NotImplementedError('Metaquery not implemented')
@@ -422,7 +421,7 @@ class Connection(base.Connection):
         :param limit: Maximum number of results to return.
         """
         # Initialize pool of green work threads and queue to handle results
-        thread_pool = threadgroup.ThreadGroup(
+        thread_pool = os_service.threadgroup.ThreadGroup(
             thread_pool_size=cfg.CONF.monasca.query_concurrency_limit)
         result_queue = eventlet.queue.Queue()
 

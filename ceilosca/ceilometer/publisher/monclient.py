@@ -18,11 +18,11 @@ import time
 
 from oslo_config import cfg
 from oslo_log import log
+from oslo_service import loopingcall
 
 import ceilometer
 from ceilometer.i18n import _
 from ceilometer import monasca_client as mon_client
-from ceilometer.openstack.common import loopingcall
 from ceilometer import publisher
 from ceilometer.publisher.monasca_data_filter import MonascaDataFilter
 

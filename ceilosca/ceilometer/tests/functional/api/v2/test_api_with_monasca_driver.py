@@ -204,19 +204,6 @@ class TestListMeters(TestApi):
         data = self.get_json('/meters')
         self.assertEqual([], data)
 
-    def test_not_implemented(self):
-
-        resp = self.get_json('/meters',
-                             q=[{'field': 'pagination',
-                                 'value': True}],
-                             expect_errors=True)
-
-        expected_error_message = 'Pagination not implemented'
-
-        self.assertEqual(expected_error_message,
-                         resp.json['error_message']['faultstring'])
-        self.assertEqual(501, resp.status_code)
-
     def test_get_meters(self):
 
         mnl_mock = self.mock_mon_client().metrics_list
@@ -243,7 +230,8 @@ class TestListMeters(TestApi):
         self.assertEqual(True, mnl_mock.called)
         self.assertEqual(1, mnl_mock.call_count)
         self.assertEqual(dict(dimensions=dict(resource_id=u'resource-1',
-                                              project_id=u'project-1')),
+                                              project_id=u'project-1'),
+                              limit=100),
                          mnl_mock.call_args[1])
 
     def test_get_meters_query_with_user(self):
@@ -255,5 +243,6 @@ class TestListMeters(TestApi):
                           'value': 'user-1'}])
         self.assertEqual(True, mnl_mock.called)
         self.assertEqual(1, mnl_mock.call_count)
-        self.assertEqual(dict(dimensions=dict(user_id=u'user-1')),
+        self.assertEqual(dict(dimensions=dict(user_id=u'user-1'),
+                              limit=100),
                          mnl_mock.call_args[1])

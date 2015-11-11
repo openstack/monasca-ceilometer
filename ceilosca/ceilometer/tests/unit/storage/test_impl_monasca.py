@@ -32,9 +32,6 @@ class TestGetResources(base.BaseTestCase):
         with mock.patch("ceilometer.monasca_client.Client"):
             conn = impl_monasca.Connection("127.0.0.1:8080")
 
-            kwargs = dict(pagination=True)
-            self.assertRaises(ceilometer.NotImplementedError,
-                              lambda: list(conn.get_resources(**kwargs)))
             kwargs = dict(start_timestamp_op='le')
             self.assertRaises(ceilometer.NotImplementedError,
                               lambda: list(conn.get_resources(**kwargs)))
@@ -110,10 +107,6 @@ class MeterTest(base.BaseTestCase):
     def test_not_implemented_params(self, mock_mdf):
         with mock.patch('ceilometer.monasca_client.Client'):
             conn = impl_monasca.Connection('127.0.0.1:8080')
-
-            kwargs = dict(pagination=True)
-            self.assertRaises(ceilometer.NotImplementedError,
-                              lambda: list(conn.get_meters(**kwargs)))
 
             kwargs = dict(metaquery=True)
             self.assertRaises(ceilometer.NotImplementedError,
@@ -636,7 +629,6 @@ class CapabilitiesTest(base.BaseTestCase):
         expected_capabilities = {
             'meters':
                 {
-                    'pagination': False,
                     'query':
                         {
                             'complex': False,
@@ -646,7 +638,6 @@ class CapabilitiesTest(base.BaseTestCase):
                 },
             'resources':
                 {
-                    'pagination': False,
                     'query':
                         {
                             'complex': False, 'metadata': True, 'simple': True
@@ -679,7 +670,6 @@ class CapabilitiesTest(base.BaseTestCase):
                                 },
                             'standard': True},
                     'groupby': False,
-                    'pagination': False,
                     'query':
                         {
                             'complex': False,

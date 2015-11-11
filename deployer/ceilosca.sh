@@ -2,15 +2,18 @@
 
 export MONASCA_VAGRANT_REPO=https://git.openstack.org/openstack/monasca-vagrant
 export DEVSTACK_REPO=https://git.openstack.org/openstack-dev/devstack.git
+export CEILOMETER_REPO=https://git.openstack.org/openstack/ceilometer
 
 export BASE_DIR=~
 export WORK_DIR=$BASE_DIR/monasca-vagrant
-export PREFERRED_BRANCH=stable/kilo
+export PREFERRED_BRANCH=stable/liberty
 export DEVSTACK_DIR=$BASE_DIR/devstack
 export DEVSTACK_IP=192.168.10.5
 export MINIMON_IP=192.168.10.4
 export NETWORK_IF=eth0
 export CEILOSCA_USER=$USER
+export DEVSTACK_DEST=/opt/stack
+export CEILOMETER_DEST=$DEVSTACK_DEST/ceilometer
 
 #The following variables are used by, modified devstack ceilometer (deployer/devstack/ceilometer) script
 export TARGET_IP=127.0.0.1
@@ -24,11 +27,22 @@ clear_env()
         unset OS_USERNAME OS_PASSWORD OS_PROJECT_NAME OS_AUTH_URL
 }
 
+download_ceilometer()
+{
+       if [ ! -d $DEVSTACK_DEST ]; then
+           sudo mkdir -p $DEVSTACK_DEST
+           sudo chown $CEILOSCA_USER $DEVSTACK_DEST
+       fi
+
+       git clone -b $PREFERRED_BRANCH $CEILOMETER_REPO $CEILOMETER_DEST || true
+       cp deployer/devstack/settings $CEILOMETER_DEST/devstack
+       cp deployer/devstack/plugin.sh $CEILOMETER_DEST/devstack
+}
+
 setup_devstack()
 {
         git clone -b $PREFERRED_BRANCH $DEVSTACK_REPO $DEVSTACK_DIR || true
         cp deployer/devstack/local.conf $DEVSTACK_DIR
-        cp deployer/devstack/ceilometer $DEVSTACK_DIR/lib
         pushd $DEVSTACK_DIR
         ./unstack.sh || true
         ./stack.sh
@@ -90,6 +104,7 @@ run_ceilosca()
 }
 
 clear_env
+download_ceilometer
 setup_devstack
 install_ansible
 get_monasca_files
