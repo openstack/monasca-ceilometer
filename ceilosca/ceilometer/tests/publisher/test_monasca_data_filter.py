@@ -70,10 +70,12 @@ class TestMonUtils(base.BaseTestCase):
             r = data_filter.process_sample_for_monasca(s)
 
             self.assertEqual(s.name, r['name'])
-            self.assertIsNone(r['dimensions'].get('type'))
-            self.assertIsNone(r.get('value_meta'))
+            self.assertIsNotNone(r.get('dimensions'))
+            self.assertIsNotNone(r.get('value_meta'))
+            self.assertIsNotNone(r.get('value'))
             self.assertEqual(s.user_id, r['dimensions'].get('user_id'))
-            self.assertEqual(s.project_id, r['dimensions']['project_id'])
+            self.assertEqual(s.project_id, r['dimensions'].get('project_id'))
+            self.assertEqual(s.resource_id, r['dimensions'].get('resource_id'))
             # 2015-04-07T20:07:06.156986 compare upto millisec
             monasca_ts = \
                 timeutils.iso8601_from_timestamp(r['timestamp'] / 1000.0,

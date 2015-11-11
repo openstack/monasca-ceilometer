@@ -109,12 +109,16 @@ class MonascaDataFilter(object):
                     if val:
                         value_meta[meta_key] = val
 
+        meter_value = sample.get('volume') or sample.get('counter_volume')
+        if meter_value is None:
+            meter_value = 0
+
         metric = dict(
             name=meter_name,
             timestamp=self._convert_timestamp(sample['timestamp']),
-            value=sample.get('volume') or sample.get('counter_volume'),
+            value=meter_value,
             dimensions=dimensions,
-            value_meta=value_meta if value_meta else None,
+            value_meta=value_meta,
         )
 
         LOG.debug(_LI("Generated metric with name %(name)s,"
