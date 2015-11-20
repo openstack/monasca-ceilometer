@@ -63,7 +63,7 @@ Assumes that an active monasca-api server is running.
 ### Other info
 
 Since we don't have full repo of ceilometer, we setup the ceilometer repo in venv and copy monasca integration files in there,
-and run the unit tests over that code. At present this is tested against ceilometer stable/kilo branch, if you need to test
+and run the unit tests over that code. At present this is tested against ceilometer stable/liberty branch, if you need to test
 against different branch you can change it in test-requirements.txt
 
 Relevant files are:

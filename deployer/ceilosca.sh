@@ -78,11 +78,6 @@ disable_monasca_ui_role()
 
 }
 
-disable_monasca_events_installation()
-{
-        sed -i "s/- include: events.yml/#- include: events.yml/" $WORK_DIR/mini-mon.yml
-}
-
 add_to_etc_hosts()
 {
         if ! grep -q "$TARGET_IP devstack mini-mon" /etc/hosts; then
@@ -109,7 +104,6 @@ setup_devstack
 install_ansible
 get_monasca_files
 disable_monasca_ui_role
-disable_monasca_events_installation
 add_to_etc_hosts
 add_monasca_ips_to_local_net_if
 run_ceilosca

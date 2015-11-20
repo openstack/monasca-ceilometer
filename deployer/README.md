@@ -2,8 +2,7 @@
 
 #Few gotchas:
 
-- Monasca-ui doesn't get setup with this since it has some compatibilty issues with stable/kilo
-- Monasca-events doesn't get installed either, as it is attempting to install oslo at system level causing issues with devstack
+- Monasca-ui doesn't get setup with this since it has compatibilty issues with oslo.utils version in stable/liberty
 - One of the monasca smoke test fails, but it is at the end and shouldn't affect the operation of ceilosca
 
 #Pre-Requisites:
