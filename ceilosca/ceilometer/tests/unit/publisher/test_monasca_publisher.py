@@ -18,6 +18,7 @@
 import datetime
 import eventlet
 import mock
+from oslo_config import cfg
 from oslo_config import fixture as fixture_config
 from oslotest import base
 from oslotest import mockpatch
@@ -96,6 +97,14 @@ class TestMonascaPublisher(base.BaseTestCase):
         }
     }
 
+    opts = [
+        cfg.StrOpt("username", default="ceilometer"),
+        cfg.StrOpt("password", default="password"),
+        cfg.StrOpt("auth_url", default="http://192.168.10.6:5000"),
+        cfg.StrOpt("project_name", default="service"),
+        cfg.StrOpt("project_id", default="service"),
+        ]
+
     @staticmethod
     def create_side_effect(exception_type, test_exception):
         def side_effect(*args, **kwargs):
@@ -109,6 +118,7 @@ class TestMonascaPublisher(base.BaseTestCase):
         super(TestMonascaPublisher, self).setUp()
         self.CONF = self.useFixture(fixture_config.Config()).conf
         self.CONF([], project='ceilometer', validate_default_values=True)
+        self.CONF.register_opts(self.opts, group="service_credentials")
         self.parsed_url = mock.MagicMock()
         ksclient.KSClient = mock.MagicMock()
 
@@ -123,7 +133,7 @@ class TestMonascaPublisher(base.BaseTestCase):
         with mock.patch.object(publisher.mon_client,
                                'metrics_create') as mock_create:
             mock_create.return_value = FakeResponse(204)
-            publisher.publish_samples(None, self.test_data)
+            publisher.publish_samples(self.test_data)
             self.assertEqual(3, mock_create.call_count)
             self.assertEqual(1, mapping_patch.called)
 
@@ -141,7 +151,7 @@ class TestMonascaPublisher(base.BaseTestCase):
         with mock.patch.object(publisher.mon_client,
                                'metrics_create') as mock_create:
             mock_create.return_value = FakeResponse(204)
-            publisher.publish_samples(None, self.test_data)
+            publisher.publish_samples(self.test_data)
             eventlet.sleep(2)
             self.assertEqual(1, mock_create.call_count)
             self.assertEqual(1, mapping_patch.called)
@@ -165,7 +175,7 @@ class TestMonascaPublisher(base.BaseTestCase):
             mock_create.side_effect = self.create_side_effect(
                 mon_client.MonascaServiceException,
                 raise_http_error)
-            publisher.publish_samples(None, self.test_data)
+            publisher.publish_samples(self.test_data)
             eventlet.sleep(5)
             self.assertEqual(4, mock_create.call_count)
             self.assertEqual(1, mapping_patch.called)
@@ -189,6 +199,6 @@ class TestMonascaPublisher(base.BaseTestCase):
                                'metrics_create') as mock_create:
             mock_create.side_effect = Exception
             metrics_archiver = self.fake_publisher.publish_samples
-            publisher.publish_samples(None, self.test_data)
+            publisher.publish_samples(self.test_data)
             self.assertEqual(1, metrics_archiver.called)
             self.assertEqual(3, metrics_archiver.call_count)

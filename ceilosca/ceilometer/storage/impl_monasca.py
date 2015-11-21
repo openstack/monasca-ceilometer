@@ -252,7 +252,7 @@ class Connection(base.Connection):
                 pass
 
     def get_meters(self, user=None, project=None, resource=None, source=None,
-                   metaquery=None, limit=None):
+                   metaquery=None, limit=None, unique=False):
         """Return an iterable of dictionaries containing meter information.
 
         { 'name': name of the meter,

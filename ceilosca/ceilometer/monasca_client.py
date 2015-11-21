@@ -26,7 +26,7 @@ monclient_opts = [
 ]
 
 cfg.CONF.register_opts(monclient_opts, group='monasca')
-cfg.CONF.import_group('service_credentials', 'ceilometer.service')
+cfg.CONF.import_group('service_credentials', 'ceilometer.keystone_client')
 
 LOG = log.getLogger(__name__)
 
@@ -48,20 +48,20 @@ class Client(object):
 
     def __init__(self, parsed_url):
         conf = cfg.CONF.service_credentials
-        if not conf.os_username or not conf.os_password or \
-                not conf.os_auth_url:
+        if not conf.username or not conf.password or \
+                not conf.auth_url:
             err_msg = _("No user name or password or auth_url "
                         "found in service_credentials")
             LOG.error(err_msg)
             raise MonascaInvalidServiceCredentialsException(err_msg)
 
         kwargs = {
-            'username': conf.os_username,
-            'password': conf.os_password,
-            'auth_url': conf.os_auth_url.replace("v2.0", "v3"),
-            'project_id': conf.os_tenant_id,
-            'project_name': conf.os_tenant_name,
-            'region_name': conf.os_region_name,
+            'username': conf.username,
+            'password': conf.password,
+            'auth_url': conf.auth_url + "/v3",
+            'project_id': conf.project_id,
+            'project_name': conf.project_name,
+            'region_name': conf.region_name,
         }
 
         self._kwargs = kwargs

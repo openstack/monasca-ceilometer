@@ -101,13 +101,13 @@ class MonascaDataFilter(object):
             for meta_key in self._mapping['metadata']['common']:
                 val = sample_meta.get(meta_key, None)
                 if val:
-                    value_meta[meta_key] = val
+                    value_meta[meta_key] = str(val)
 
             if meter_name in self._mapping['metadata'].keys():
                 for meta_key in self._mapping['metadata'][meter_name]:
                     val = sample_meta.get(meta_key, None)
                     if val:
-                        value_meta[meta_key] = val
+                        value_meta[meta_key] = str(val)
 
         meter_value = sample.get('volume') or sample.get('counter_volume')
         if meter_value is None:

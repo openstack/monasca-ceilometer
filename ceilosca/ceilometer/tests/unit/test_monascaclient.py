@@ -14,18 +14,31 @@
 
 import mock
 from oslo_config import cfg
+from oslo_config import fixture as fixture_config
 from oslo_utils import netutils
 from oslotest import base
 
 from ceilometer import monasca_client
 from monascaclient import exc
 
-cfg.CONF.import_group('service_credentials', 'ceilometer.service')
+cfg.CONF.import_group('service_credentials', 'ceilometer.keystone_client')
 
 
 class TestMonascaClient(base.BaseTestCase):
+
+    opts = [
+        cfg.StrOpt("username", default="ceilometer"),
+        cfg.StrOpt("password", default="password"),
+        cfg.StrOpt("auth_url", default="http://192.168.10.6:5000"),
+        cfg.StrOpt("project_name", default="service"),
+        cfg.StrOpt("project_id", default="service"),
+        ]
+
     def setUp(self):
         super(TestMonascaClient, self).setUp()
+        self.CONF = self.useFixture(fixture_config.Config()).conf
+        self.CONF([], project='ceilometer', validate_default_values=True)
+        self.CONF.register_opts(self.opts, group="service_credentials")
 
         self.mc = self._get_client()
 
@@ -67,15 +80,15 @@ class TestMonascaClient(base.BaseTestCase):
 
         class SetOpt(object):
             def __enter__(self):
-                self.username = conf.os_username
-                conf.os_username = ""
+                self.username = conf.username
+                conf.username = ""
 
             def __exit__(self, exc_type, exc_val, exc_tb):
-                conf.os_username = self.username
+                conf.username = self.username
 
         with SetOpt():
             self.assertRaises(
                 monasca_client.MonascaInvalidServiceCredentialsException,
                 self._get_client)
 
-        self.assertIsNotNone(True, conf.os_username)
+        self.assertIsNotNone(True, conf.username)

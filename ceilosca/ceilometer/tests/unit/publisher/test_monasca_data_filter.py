@@ -120,7 +120,7 @@ class TestMonUtils(base.BaseTestCase):
             timestamp=datetime.datetime.utcnow().isoformat(),
             resource_metadata={'event_type': 'notification',
                                'status': 'active',
-                               'size': 1500},
+                               'size': '1500'},
         )
 
         to_patch = ("ceilometer.publisher.monasca_data_filter."

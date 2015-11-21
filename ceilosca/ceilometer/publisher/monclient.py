@@ -150,7 +150,7 @@ class MonascaPublisher(publisher.PublisherBase):
             if hasattr(self, 'archive_handler'):
                     self.archive_handler.publish_samples(None, metrics)
 
-    def publish_samples(self, context, samples):
+    def publish_samples(self, samples):
         """Main method called to publish samples."""
 
         for sample in samples:
@@ -256,10 +256,9 @@ class MonascaPublisher(publisher.PublisherBase):
                     self.retry_counter[ctr] += 1
                     ctr += 1
 
-    def publish_events(self, context, events):
+    def publish_events(self, events):
         """Send an event message for publishing
 
-        :param context: Execution context from the service or RPC call
         :param events: events from pipeline after transformation
         """
         raise ceilometer.NotImplementedError

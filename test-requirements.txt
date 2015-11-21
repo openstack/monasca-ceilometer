@@ -1,5 +1,5 @@
 hacking<0.11,>=0.10.0
-git+https://github.com/openstack/ceilometer.git@stable/liberty#egg=ceilometer
+git+https://github.com/openstack/ceilometer.git@stable/mitaka#egg=ceilometer
 mock>=1.2
 testrepository>=0.0.18
 testscenarios>=0.4

@@ -1,0 +1,11 @@
+# settings file for ceilosca
+
+source $DEST/ceilometer/devstack/settings
+
+enable_service ceilosca
+
+MONASCA_API_URL=http://$SERVICE_HOST:8070/v2.0
+CEILOSCA_DIR=$DEST/ceilosca
+CEILOSCA_FILES='ceilometer/monasca_client.py ceilometer/publisher/monasca_data_filter.py ceilometer/publisher/monclient.py ceilometer/storage/impl_monasca.py ../devstack/setup.cfg:.'
+CEILOSCA_CONF_FILES='pipeline.yaml monasca_field_definitions.yaml'
+CEILOSCA_USER=$USER

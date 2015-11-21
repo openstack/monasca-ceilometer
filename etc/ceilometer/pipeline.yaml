@@ -10,4 +10,4 @@ sinks:
     - name: meter_sink
       transformers:
       publishers:
-          - monasca://http://127.0.0.1:8070/v2.0
+          - monasca://http://192.168.10.6:8070/v2.0
