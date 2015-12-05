@@ -554,6 +554,11 @@ class Connection(base.Connection):
         if not filter.start_timestamp:
             filter.start_timestamp = timeutils.isotime(
                 datetime.datetime(1970, 1, 1))
+        else:
+            filter.start_timestamp = timeutils.isotime(filter.start_timestamp)
+
+        if filter.end_timestamp:
+            filter.end_timestamp = timeutils.isotime(filter.end_timestamp)
 
         # TODO(monasca): Add this a config parameter
         allowed_stats = ['avg', 'min', 'max', 'sum', 'count']
@@ -596,8 +601,10 @@ class Connection(base.Connection):
         for stats in stats_list:
             for s in stats['statistics']:
                 stats_dict = self._convert_to_dict(s, stats['columns'])
-                ts_start = timeutils.parse_isotime(stats_dict['timestamp'])
-                ts_end = ts_start + datetime.timedelta(0, period)
+                ts_start = timeutils.parse_isotime(
+                    stats_dict['timestamp']).replace(tzinfo=None)
+                ts_end = (ts_start + datetime.timedelta(
+                    0, period)).replace(tzinfo=None)
                 del stats_dict['timestamp']
                 if 'count' in stats_dict:
                     stats_dict['count'] = int(stats_dict['count'])

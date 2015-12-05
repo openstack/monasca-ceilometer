@@ -609,6 +609,8 @@ class MeterStatisticsTest(base.BaseTestCase):
 
             sf = storage.SampleFilter()
             sf.meter = "image"
+            sf.start_timestamp = timeutils.parse_isotime(
+                '2014-10-24T12:12:42').replace(tzinfo=None)
             stats = list(conn.get_meter_statistics(sf, period=30))
 
             self.assertEqual(2, len(stats))
@@ -617,9 +619,9 @@ class MeterStatisticsTest(base.BaseTestCase):
             self.assertEqual(0.008, stats[0].min)
             self.assertEqual(0.018, stats[1].min)
             self.assertEqual(30, stats[0].period)
-            self.assertEqual('2014-10-24T12:12:42+00:00',
+            self.assertEqual('2014-10-24T12:12:42',
                              stats[0].period_end.isoformat())
-            self.assertEqual('2014-10-24T12:52:42+00:00',
+            self.assertEqual('2014-10-24T12:52:42',
                              stats[1].period_end.isoformat())
 
 
