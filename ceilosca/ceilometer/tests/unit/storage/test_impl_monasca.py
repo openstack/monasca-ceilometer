@@ -517,12 +517,12 @@ class MeterStatisticsTest(base.BaseTestCase):
                                              conn.get_meter_statistics(sf)))
 
             sf.meter = "image"
-            self.assertRaisesWithMessage("Groupby not implemented",
+            self.assertRaisesWithMessage("Groupby message_id not implemented",
                                          ceilometer.NotImplementedError,
                                          lambda: list(
                                              conn.get_meter_statistics(
                                                  sf,
-                                                 groupby="resource_id")))
+                                                 groupby=['message_id'])))
 
             sf.metaquery = "metaquery"
             self.assertRaisesWithMessage("Metaquery not implemented",
@@ -629,6 +629,76 @@ class MeterStatisticsTest(base.BaseTestCase):
                              stats[1].period_end.isoformat())
             self.assertIsNotNone(stats[0].as_dict().get('aggregate'))
             self.assertEqual({u'min': 0.008}, stats[0].as_dict()['aggregate'])
+
+    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
+    def test_stats_list_with_groupby(self, mock_mdf):
+        with mock.patch("ceilometer.monasca_client.Client") as mock_client:
+            conn = impl_monasca.Connection("127.0.0.1:8080")
+            ml_mock = mock_client().metrics_list
+            ml_mock.return_value = [
+                {
+                    'name': 'image',
+                    'dimensions': {'project_id': '1234'}
+                },
+                {
+                    'name': 'image',
+                    'dimensions': {'project_id': '5678'}
+                }
+            ]
+
+            sl_mock = mock_client().statistics_list
+            sl_mock.side_effect = [[
+                {
+                    'statistics':
+                        [
+                            ['2014-10-24T12:12:12Z', 0.008, 1.3, 3, 0.34],
+                            ['2014-10-24T12:20:12Z', 0.078, 1.25, 2, 0.21],
+                            ['2014-10-24T12:52:12Z', 0.018, 0.9, 4, 0.14]
+                        ],
+                    'dimensions': {'project_id': '1234', 'unit': 'gb'},
+                    'columns': ['timestamp', 'min', 'max', 'count', 'avg']
+                }],
+                [{
+                    'statistics':
+                        [
+                            ['2014-10-24T12:14:12Z', 0.45, 2.5, 2, 2.1],
+                            ['2014-10-24T12:20:12Z', 0.58, 3.2, 3, 3.4],
+                            ['2014-10-24T13:52:42Z', 1.67, 3.5, 1, 5.3]
+                        ],
+                    'dimensions': {'project_id': '5678', 'unit': 'gb'},
+                    'columns': ['timestamp', 'min', 'max', 'count', 'avg']
+                }]]
+
+            sf = storage.SampleFilter()
+            sf.meter = "image"
+            sf.start_timestamp = timeutils.parse_isotime(
+                '2014-10-24T12:12:42').replace(tzinfo=None)
+            groupby = ['project_id']
+            stats = list(conn.get_meter_statistics(sf, period=30,
+                                                   groupby=groupby))
+
+            self.assertEqual(2, len(stats))
+
+            for stat in stats:
+                self.assertIsNotNone(stat.groupby)
+                project_id = stat.groupby.get('project_id')
+                self.assertIn(project_id, ['1234', '5678'])
+                if project_id == '1234':
+                    self.assertEqual(0.008, stat.min)
+                    self.assertEqual(1.3, stat.max)
+                    self.assertEqual(0.23, stat.avg)
+                    self.assertEqual(9, stat.count)
+                    self.assertEqual(30, stat.period)
+                    self.assertEqual('2014-10-24T12:12:12',
+                                     stat.period_start.isoformat())
+                if project_id == '5678':
+                    self.assertEqual(0.45, stat.min)
+                    self.assertEqual(3.5, stat.max)
+                    self.assertEqual(3.6, stat.avg)
+                    self.assertEqual(6, stat.count)
+                    self.assertEqual(30, stat.period)
+                    self.assertEqual('2014-10-24T13:52:42',
+                                     stat.period_end.isoformat())
 
 
 class CapabilitiesTest(base.BaseTestCase):

@@ -348,18 +348,29 @@ class Connection(base.Connection):
             yield curr, next
             curr = next
 
-    def get_next_task_args(self, sample_filter, delta, **kwargs):
+    def get_next_task_args(self, start_timestamp=None, end_timestamp=None,
+                           delta=None, **kwargs):
+
         # Yields next set of measurement related args
         metrics = self.mc.metrics_list(**kwargs)
-        for start, end in self.get_next_time_delta(
-                sample_filter.start_timestamp,
-                sample_filter.end_timestamp,
-                delta):
+        has_ts = start_timestamp and end_timestamp and delta
+        if has_ts:
+            for start, end in self.get_next_time_delta(
+                    start_timestamp,
+                    end_timestamp,
+                    delta):
+                for metric in metrics:
+                    task = {'metric': metric['name'],
+                            'dimension': metric['dimensions'],
+                            'start_ts': start,
+                            'end_ts': end}
+                    LOG.debug(_('next task is : %s'), task)
+                    yield task
+        else:
             for metric in metrics:
                 task = {'metric': metric['name'],
-                        'dimension': metric['dimensions'],
-                        'start_ts': start,
-                        'end_ts': end}
+                        'dimension': metric['dimensions']
+                        }
                 LOG.debug(_('next task is : %s'), task)
                 yield task
 
@@ -477,7 +488,8 @@ class Connection(base.Connection):
             result_count = 0
 
         for task_cnt, task in enumerate(self.get_next_task_args(
-                sample_filter, delta, **_metric_args)):
+                sample_filter.start_timestamp, sample_filter.end_timestamp,
+                delta, **_metric_args)):
             # Spawn query_concurrency_limit number of green threads
             # simultaneously to fetch measurements
             thread_pool.add_thread(self.get_measurements,
@@ -531,8 +543,17 @@ class Connection(base.Connection):
             raise ceilometer.NotImplementedError('Query without filter '
                                                  'not implemented')
 
+        allowed_groupby = ['user_id', 'project_id', 'resource_id', 'source']
+
         if groupby:
-            raise ceilometer.NotImplementedError('Groupby not implemented')
+            if len(groupby) > 1:
+                raise ceilometer.NotImplementedError('Only one groupby '
+                                                     'supported')
+
+            groupby = groupby[0]
+            if groupby not in allowed_groupby:
+                raise ceilometer.NotImplementedError('Groupby %s not'
+                                                     ' implemented' % groupby)
 
         if filter.metaquery:
             raise ceilometer.NotImplementedError('Metaquery not implemented')
@@ -550,7 +571,6 @@ class Connection(base.Connection):
             raise ceilometer.NotImplementedError(('End time op %s '
                                                   'not implemented') %
                                                  filter.end_timestamp_op)
-
         if not filter.start_timestamp:
             filter.start_timestamp = timeutils.isotime(
                 datetime.datetime(1970, 1, 1))
@@ -585,44 +605,167 @@ class Connection(base.Connection):
         period = period if period \
             else cfg.CONF.monasca.default_stats_period
 
-        _search_args = dict(
-            name=filter.meter,
-            dimensions=dims_filter,
-            start_time=filter.start_timestamp,
-            end_time=filter.end_timestamp,
-            period=period,
-            statistics=','.join(statistics),
-            merge_metrics=True)
+        if groupby:
+            _metric_args = dict(name=filter.meter,
+                                dimensions=dims_filter)
+            group_stats_list = []
 
-        _search_args = {k: v for k, v in _search_args.items()
-                        if v is not None}
+            for task_cnt, task in enumerate(
+                    self.get_next_task_args(**_metric_args)):
 
-        stats_list = self.mc.statistics_list(**_search_args)
-        for stats in stats_list:
-            for s in stats['statistics']:
-                stats_dict = self._convert_to_dict(s, stats['columns'])
+                _search_args = dict(
+                    name=task['metric'],
+                    dimensions=task['dimension'],
+                    start_time=filter.start_timestamp,
+                    end_time=filter.end_timestamp,
+                    period=period,
+                    statistics=','.join(statistics),
+                    merge_metrics=False)
+
+                _search_args = {k: v for k, v in _search_args.items()
+                                if v is not None}
+                stats_list = self.mc.statistics_list(**_search_args)
+                group_stats_list.extend(stats_list)
+
+            group_stats_dict = {}
+
+            for stats in group_stats_list:
+                groupby_val = stats['dimensions'].get(groupby)
+                stats_list = group_stats_dict.get(groupby_val)
+                if stats_list:
+                    stats_list.append(stats)
+                else:
+                    group_stats_dict[groupby_val] = [stats]
+
+            def get_max(items):
+                return max(items)
+
+            def get_min(items):
+                return min(items)
+
+            def get_avg(items):
+                return sum(items)/len(items)
+
+            def get_sum(items):
+                return sum(items)
+
+            def get_count(items):
+                count = 0
+                for item in items:
+                    count = count + item
+                return count
+
+            for group_key, stats_group in group_stats_dict.iteritems():
+                max_list = []
+                min_list = []
+                avg_list = []
+                sum_list = []
+                count_list = []
+                ts_list = []
+                group_statistics = {}
+                for stats in stats_group:
+                    for s in stats['statistics']:
+                        stats_dict = self._convert_to_dict(s, stats['columns'])
+
+                        if 'max' in stats['columns']:
+                            max_list.append(stats_dict['max'])
+                        if 'min' in stats['columns']:
+                            min_list.append(stats_dict['min'])
+                        if 'avg' in stats['columns']:
+                            avg_list.append(stats_dict['avg'])
+                        if 'sum' in stats['columns']:
+                            sum_list.append(stats_dict['sum'])
+                        if 'count' in stats['columns']:
+                            count_list.append(stats_dict['count'])
+
+                        ts_list.append(stats_dict['timestamp'])
+
+                        group_statistics['unit'] = (stats['dimensions'].
+                                                    get('unit'))
+
+                if len(max_list):
+                    group_statistics['max'] = get_max(max_list)
+                if len(min_list):
+                    group_statistics['min'] = get_min(min_list)
+                if len(avg_list):
+                    group_statistics['avg'] = get_avg(avg_list)
+                if len(sum_list):
+                    group_statistics['sum'] = get_sum(sum_list)
+                if len(count_list):
+                    group_statistics['count'] = get_count(count_list)
+
+                group_statistics['end_timestamp'] = get_max(ts_list)
+                group_statistics['timestamp'] = get_min(ts_list)
+
                 ts_start = timeutils.parse_isotime(
-                    stats_dict['timestamp']).replace(tzinfo=None)
-                ts_end = (ts_start + datetime.timedelta(
-                    0, period)).replace(tzinfo=None)
-                del stats_dict['timestamp']
-                if 'count' in stats_dict:
-                    stats_dict['count'] = int(stats_dict['count'])
-                if aggregate:
-                    stats_dict['aggregate'] = {}
-                    for a in aggregate:
-                        key = '%s%s' % (a.func,
-                                        '/%s' % a.param if a.param else '')
-                        stats_dict['aggregate'][key] = stats_dict.get(key)
+                    group_statistics['timestamp']).replace(tzinfo=None)
 
+                ts_end = timeutils.parse_isotime(
+                    group_statistics['end_timestamp']).replace(tzinfo=None)
+
+                del group_statistics['end_timestamp']
+
+                if 'count' in group_statistics:
+                    group_statistics['count'] = int(group_statistics['count'])
+                unit = group_statistics['unit']
+                del group_statistics['unit']
+                if aggregate:
+                        group_statistics['aggregate'] = {}
+                        for a in aggregate:
+                            key = '%s%s' % (a.func, '/%s' % a.param if a.param
+                                            else '')
+                            group_statistics['aggregate'][key] = (
+                                group_statistics.get(key))
                 yield api_models.Statistics(
-                    unit=stats['dimensions'].get('unit'),
+                    unit=unit,
                     period=period,
                     period_start=ts_start,
                     period_end=ts_end,
                     duration=period,
                     duration_start=ts_start,
                     duration_end=ts_end,
-                    groupby={u'': u''},
-                    **stats_dict
+                    groupby={groupby: group_key},
+                    **group_statistics
                 )
+        else:
+            _search_args = dict(
+                name=filter.meter,
+                dimensions=dims_filter,
+                start_time=filter.start_timestamp,
+                end_time=filter.end_timestamp,
+                period=period,
+                statistics=','.join(statistics),
+                merge_metrics=True)
+
+            _search_args = {k: v for k, v in _search_args.items()
+                            if v is not None}
+            stats_list = self.mc.statistics_list(**_search_args)
+            for stats in stats_list:
+                for s in stats['statistics']:
+                    stats_dict = self._convert_to_dict(s, stats['columns'])
+                    ts_start = timeutils.parse_isotime(
+                        stats_dict['timestamp']).replace(tzinfo=None)
+                    ts_end = (ts_start + datetime.timedelta(
+                        0, period)).replace(tzinfo=None)
+                    del stats_dict['timestamp']
+                    if 'count' in stats_dict:
+                        stats_dict['count'] = int(stats_dict['count'])
+
+                    if aggregate:
+                        stats_dict['aggregate'] = {}
+                        for a in aggregate:
+                            key = '%s%s' % (a.func, '/%s' % a.param if a.param
+                                            else '')
+                            stats_dict['aggregate'][key] = stats_dict.get(key)
+
+                    yield api_models.Statistics(
+                        unit=stats['dimensions'].get('unit'),
+                        period=period,
+                        period_start=ts_start,
+                        period_end=ts_end,
+                        duration=period,
+                        duration_start=ts_start,
+                        duration_end=ts_end,
+                        groupby={u'': u''},
+                        **stats_dict
+                    )
