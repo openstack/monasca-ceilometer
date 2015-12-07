@@ -608,6 +608,13 @@ class Connection(base.Connection):
                 del stats_dict['timestamp']
                 if 'count' in stats_dict:
                     stats_dict['count'] = int(stats_dict['count'])
+                if aggregate:
+                    stats_dict['aggregate'] = {}
+                    for a in aggregate:
+                        key = '%s%s' % (a.func,
+                                        '/%s' % a.param if a.param else '')
+                        stats_dict['aggregate'][key] = stats_dict.get(key)
+
                 yield api_models.Statistics(
                     unit=stats['dimensions'].get('unit'),
                     period=period,

@@ -22,6 +22,7 @@ from oslo_utils import timeutils
 from oslotest import base
 
 import ceilometer
+from ceilometer.api.controllers.v2.meters import Aggregate
 import ceilometer.storage as storage
 from ceilometer.storage import impl_monasca
 
@@ -609,9 +610,12 @@ class MeterStatisticsTest(base.BaseTestCase):
 
             sf = storage.SampleFilter()
             sf.meter = "image"
+            aggregate = Aggregate()
+            aggregate.func = 'min'
             sf.start_timestamp = timeutils.parse_isotime(
                 '2014-10-24T12:12:42').replace(tzinfo=None)
-            stats = list(conn.get_meter_statistics(sf, period=30))
+            stats = list(conn.get_meter_statistics(sf, aggregate=[aggregate],
+                                                   period=30))
 
             self.assertEqual(2, len(stats))
             self.assertEqual('gb', stats[0].unit)
@@ -623,6 +627,8 @@ class MeterStatisticsTest(base.BaseTestCase):
                              stats[0].period_end.isoformat())
             self.assertEqual('2014-10-24T12:52:42',
                              stats[1].period_end.isoformat())
+            self.assertIsNotNone(stats[0].as_dict().get('aggregate'))
+            self.assertEqual({u'min': 0.008}, stats[0].as_dict()['aggregate'])
 
 
 class CapabilitiesTest(base.BaseTestCase):
