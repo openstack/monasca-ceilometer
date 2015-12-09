@@ -1,3 +1,5 @@
 *.egg*
 *.pyc
 .tox
+.testrepository
+simulator
