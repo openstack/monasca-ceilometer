@@ -44,3 +44,12 @@ You can do this running the following command from the monasca-vagrant folder:
 
 `source env.sh`
 
+##Setting monasca-user role to ceilometer user
+
+Ceilometer user needs the monasca-user role in the service tenant for Ceilometer
+to authenticate with the Monasca API.
+
+keystone user-role-add --user <ID of ceilometer user> --tenant <ID of service tenant>
+--role <ID of monasca-user role>
+
+IDs can be retrieved by using keystone user-list, tenant-list and role-list.

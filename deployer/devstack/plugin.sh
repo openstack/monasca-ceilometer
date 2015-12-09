@@ -206,10 +206,6 @@ function _ceilometer_create_accounts {
             # Ceilometer needs ResellerAdmin role to access Swift account stats.
             get_or_add_user_project_role "ResellerAdmin" "ceilometer" $SERVICE_TENANT_NAME
         fi
-
-        # Ceilometer needs monasca-user role to access Monasca API.
-        get_or_add_user_project_role "monasca-user" "ceilometer" $SERVICE_TENANT_NAME
-
     fi
 }
 
