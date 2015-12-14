@@ -20,7 +20,7 @@ This is a message generator simulator cloned from oslo.messaging
 3.  Install oslo.message
 
      ```
-     pip install oslo.messaging
+     pip install oslo.messaging==3.0.0
      ```
 
 4.  Run the simulator
