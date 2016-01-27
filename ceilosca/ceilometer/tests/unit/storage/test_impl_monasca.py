@@ -23,8 +23,9 @@ from oslotest import base
 
 import ceilometer
 from ceilometer.api.controllers.v2.meters import Aggregate
-import ceilometer.storage as storage
+from ceilometer import storage
 from ceilometer.storage import impl_monasca
+from ceilometer.storage import models as storage_models
 
 
 class TestGetResources(base.BaseTestCase):
@@ -460,10 +461,7 @@ class TestGetSamples(base.BaseTestCase):
             self.assertEqual(1, ml_mock.call_count)
 
 
-class MeterStatisticsTest(base.BaseTestCase):
-
-    Aggregate = collections.namedtuple("Aggregate", ['func', 'param'])
-
+class _BaseTestCase(base.BaseTestCase):
     def assertRaisesWithMessage(self, msg, exc_class, func, *args, **kwargs):
         try:
             func(*args, **kwargs)
@@ -471,9 +469,14 @@ class MeterStatisticsTest(base.BaseTestCase):
                       exc_class.__name__)
         except AssertionError:
             raise
-        except Exception as e:
-            self.assertIsInstance(e, exc_class)
-            self.assertEqual(e.message, msg)
+        # Only catch specific exception so we can get stack trace when fail
+        except exc_class as e:
+            self.assertEqual(msg, e.message)
+
+
+class MeterStatisticsTest(_BaseTestCase):
+
+    Aggregate = collections.namedtuple("Aggregate", ['func', 'param'])
 
     @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
     def test_not_implemented_params(self, mock_mdf):
@@ -678,6 +681,79 @@ class MeterStatisticsTest(base.BaseTestCase):
                                      stat.period_end.isoformat())
 
 
+class TestQuerySamples(_BaseTestCase):
+    def setUp(self):
+        super(TestQuerySamples, self).setUp()
+        self.CONF = self.useFixture(fixture_config.Config()).conf
+        self.CONF([], project='ceilometer', validate_default_values=True)
+
+    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
+    def test_query_samples_not_implemented_params(self, mdf_mock):
+        with mock.patch("ceilometer.monasca_client.Client"):
+            conn = impl_monasca.Connection("127.0.0.1:8080")
+            query = {'or': [{'=': {"project_id": "123"}},
+                            {'=': {"user_id": "456"}}]}
+
+            self.assertRaisesWithMessage(
+                'fitler must be specified',
+                ceilometer.NotImplementedError,
+                lambda: list(conn.query_samples()))
+            self.assertRaisesWithMessage(
+                'limit must be specified',
+                ceilometer.NotImplementedError,
+                lambda: list(conn.query_samples(query)))
+            order_by = [{"timestamp": "desc"}]
+            self.assertRaisesWithMessage(
+                'orderby is not supported',
+                ceilometer.NotImplementedError,
+                lambda: list(conn.query_samples(query, order_by)))
+            self.assertRaisesWithMessage(
+                'Supply meter name at the least',
+                ceilometer.NotImplementedError,
+                lambda: list(conn.query_samples(query, None, 1)))
+
+    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
+    def test_query_samples(self, mdf_mock):
+        SAMPLES = [[
+            storage_models.Sample(
+                counter_name="instance",
+                counter_type="gauge",
+                counter_unit="instance",
+                counter_volume=1,
+                project_id="123",
+                user_id="456",
+                resource_id="789",
+                resource_metadata={},
+                source="openstack",
+                recorded_at=timeutils.utcnow(),
+                timestamp=timeutils.utcnow(),
+                message_id="0",
+                message_signature='',)
+        ]] * 2
+        samples = SAMPLES[:]
+
+        def _get_samples(*args, **kwargs):
+            return samples.pop()
+
+        with mock.patch("ceilometer.monasca_client.Client"):
+            conn = impl_monasca.Connection("127.0.0.1:8080")
+            with mock.patch.object(conn, 'get_samples') as gsm:
+                gsm.side_effect = _get_samples
+
+                query = {'or': [{'=': {"project_id": "123"}},
+                                {'=': {"user_id": "456"}}]}
+                samples = conn.query_samples(query, None, 100)
+                self.assertEqual(2, len(samples))
+                self.assertEqual(2, gsm.call_count)
+
+                samples = SAMPLES[:]
+                query = {'and': [{'=': {"project_id": "123"}},
+                                 {'>': {"counter_volume": 2}}]}
+                samples = conn.query_samples(query, None, 100)
+                self.assertEqual(0, len(samples))
+                self.assertEqual(3, gsm.call_count)
+
+
 class CapabilitiesTest(base.BaseTestCase):
 
     def test_capabilities(self):
@@ -704,7 +780,7 @@ class CapabilitiesTest(base.BaseTestCase):
                     'pagination': False,
                     'query':
                         {
-                            'complex': False,
+                            'complex': True,
                             'metadata': True,
                             'simple': True
                         }
