@@ -58,6 +58,7 @@ class TestGetResources(base.BaseTestCase):
     def test_dims_filter(self, mdf_patch):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
+            start_timestamp = timeutils.isotime(datetime.datetime(1970, 1, 1))
             mnl_mock = mock_client().metrics_list
             mnl_mock.return_value = [
                 {
@@ -68,7 +69,8 @@ class TestGetResources(base.BaseTestCase):
             kwargs = dict(project='proj1')
             list(conn.get_resources(**kwargs))
             self.assertEqual(True, mnl_mock.called)
-            self.assertEqual(dict(dimensions=dict(project_id='proj1')),
+            self.assertEqual(dict(dimensions=dict(
+                             project_id='proj1'), start_time=start_timestamp),
                              mnl_mock.call_args[1])
             self.assertEqual(1, mnl_mock.call_count)
 

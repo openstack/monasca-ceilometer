@@ -209,17 +209,20 @@ class Connection(base.Connection):
 
         _search_args = dict(
             start_time=start_timestamp,
-            end_time=end_timestamp,
-            limit=1)
+            end_time=end_timestamp
+            )
 
         _search_args = {k: v for k, v in _search_args.items()
                         if v is not None}
 
         result_count = 0
+        _search_args_metric = _search_args
+        _search_args_metric['dimensions'] = dims_filter
         for metric in self.mc.metrics_list(
-                **dict(dimensions=dims_filter)):
+                **_search_args_metric):
             _search_args['name'] = metric['name']
             _search_args['dimensions'] = metric['dimensions']
+            _search_args['limit'] = 1
             try:
                 for sample in self.mc.measurements_list(**_search_args):
                     d = sample['dimensions']
@@ -369,9 +372,6 @@ class Connection(base.Connection):
 
         _dimensions = {k: v for k, v in _dimensions.items() if v is not None}
 
-        _metric_args = dict(name=sample_filter.meter,
-                            dimensions=_dimensions)
-
         start_ts = timeutils.isotime(sample_filter.start_timestamp)
         end_ts = timeutils.isotime(sample_filter.end_timestamp)
 
@@ -380,14 +380,17 @@ class Connection(base.Connection):
             start_timestamp_op=sample_filter.start_timestamp_op,
             end_time=end_ts,
             end_timestamp_op=sample_filter.end_timestamp_op,
-            merge_metrics=False
         )
 
         result_count = 0
+        _search_args_metrics = _search_args
+        _search_args_metrics['dimensions'] = _dimensions
+        _search_args_metrics['name'] = sample_filter.meter
         for metric in self.mc.metrics_list(
-                **_metric_args):
+                **_search_args_metrics):
             _search_args['name'] = metric['name']
             _search_args['dimensions'] = metric['dimensions']
+            _search_args['merge_metrics'] = False
             _search_args = {k: v for k, v in _search_args.items()
                             if v is not None}
 
