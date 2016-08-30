@@ -616,20 +616,8 @@ class MeterStatisticsTest(_BaseTestCase):
     def test_stats_list_with_groupby(self, mock_mdf):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
-            ml_mock = mock_client().metrics_list
-            ml_mock.return_value = [
-                {
-                    'name': 'image',
-                    'dimensions': {'project_id': '1234'}
-                },
-                {
-                    'name': 'image',
-                    'dimensions': {'project_id': '5678'}
-                }
-            ]
-
             sl_mock = mock_client().statistics_list
-            sl_mock.side_effect = [[
+            sl_mock.return_value = [
                 {
                     'statistics':
                         [
@@ -639,8 +627,8 @@ class MeterStatisticsTest(_BaseTestCase):
                         ],
                     'dimensions': {'project_id': '1234', 'unit': 'gb'},
                     'columns': ['timestamp', 'min', 'max', 'count', 'avg']
-                }],
-                [{
+                },
+                {
                     'statistics':
                         [
                             ['2014-10-24T12:14:12Z', 0.45, 2.5, 2, 2.1],
@@ -649,7 +637,7 @@ class MeterStatisticsTest(_BaseTestCase):
                         ],
                     'dimensions': {'project_id': '5678', 'unit': 'gb'},
                     'columns': ['timestamp', 'min', 'max', 'count', 'avg']
-                }]]
+                }]
 
             sf = storage.SampleFilter()
             sf.meter = "image"

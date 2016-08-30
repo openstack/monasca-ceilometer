@@ -16,6 +16,7 @@
 """Simple monasca storage backend.
 """
 
+from collections import defaultdict
 import datetime
 import operator
 
@@ -511,35 +512,26 @@ class Connection(base.Connection):
         period = period if period \
             else cfg.CONF.monasca.default_stats_period
 
+        _search_args = dict(
+            name=filter.meter,
+            dimensions=dims_filter,
+            start_time=filter.start_timestamp,
+            end_time=filter.end_timestamp,
+            period=period,
+            statistics=','.join(statistics),
+        )
+
+        _search_args = {k: v for k, v in _search_args.items()
+                        if v is not None}
+
         if groupby:
-            _metric_args = dict(name=filter.meter,
-                                dimensions=dims_filter)
-            group_stats_list = []
+            _search_args['group_by'] = '*'
+            stats_list = self.mc.statistics_list(**_search_args)
+            group_stats_dict = defaultdict(list)
 
-            for metric in self.mc.metrics_list(**_metric_args):
-                _search_args = dict(
-                    name=metric['name'],
-                    dimensions=metric['dimensions'],
-                    start_time=filter.start_timestamp,
-                    end_time=filter.end_timestamp,
-                    period=period,
-                    statistics=','.join(statistics),
-                    merge_metrics=False)
-
-                _search_args = {k: v for k, v in _search_args.items()
-                                if v is not None}
-                stats_list = self.mc.statistics_list(**_search_args)
-                group_stats_list.extend(stats_list)
-
-            group_stats_dict = {}
-
-            for stats in group_stats_list:
+            for stats in stats_list:
                 groupby_val = stats['dimensions'].get(groupby)
-                stats_list = group_stats_dict.get(groupby_val)
-                if stats_list:
-                    stats_list.append(stats)
-                else:
-                    group_stats_dict[groupby_val] = [stats]
+                group_stats_dict[groupby_val].append(stats)
 
             def get_max(items):
                 return max(items)
@@ -583,9 +575,8 @@ class Connection(base.Connection):
                             count_list.append(stats_dict['count'])
 
                         ts_list.append(stats_dict['timestamp'])
-
-                        group_statistics['unit'] = (stats['dimensions'].
-                                                    get('unit'))
+                    group_statistics['unit'] = (stats['dimensions'].
+                                                get('unit'))
 
                 if len(max_list):
                     group_statistics['max'] = get_max(max_list)
@@ -598,51 +589,47 @@ class Connection(base.Connection):
                 if len(count_list):
                     group_statistics['count'] = get_count(count_list)
 
-                group_statistics['end_timestamp'] = get_max(ts_list)
-                group_statistics['timestamp'] = get_min(ts_list)
-
-                ts_start = timeutils.parse_isotime(
-                    group_statistics['timestamp']).replace(tzinfo=None)
-
-                ts_end = timeutils.parse_isotime(
-                    group_statistics['end_timestamp']).replace(tzinfo=None)
-
-                del group_statistics['end_timestamp']
-
                 if 'count' in group_statistics:
                     group_statistics['count'] = int(group_statistics['count'])
-                unit = group_statistics['unit']
-                del group_statistics['unit']
-                if aggregate:
-                        group_statistics['aggregate'] = {}
-                        for a in aggregate:
-                            key = '%s%s' % (a.func, '/%s' % a.param if a.param
-                                            else '')
-                            group_statistics['aggregate'][key] = (
-                                group_statistics.get(key))
-                yield api_models.Statistics(
-                    unit=unit,
-                    period=period,
-                    period_start=ts_start,
-                    period_end=ts_end,
-                    duration=period,
-                    duration_start=ts_start,
-                    duration_end=ts_end,
-                    groupby={groupby: group_key},
-                    **group_statistics
-                )
-        else:
-            _search_args = dict(
-                name=filter.meter,
-                dimensions=dims_filter,
-                start_time=filter.start_timestamp,
-                end_time=filter.end_timestamp,
-                period=period,
-                statistics=','.join(statistics),
-                merge_metrics=True)
 
-            _search_args = {k: v for k, v in _search_args.items()
-                            if v is not None}
+                unit = group_statistics.get('unit')
+
+                if 'unit' in group_statistics:
+                    del group_statistics['unit']
+
+                if aggregate:
+                    group_statistics['aggregate'] = {}
+                    for a in aggregate:
+                        key = '%s%s' % (a.func, '/%s' % a.param if a.param
+                                        else '')
+                        group_statistics['aggregate'][key] = (
+                            group_statistics.get(key))
+
+                if group_statistics and len(ts_list):
+                    group_statistics['end_timestamp'] = get_max(ts_list)
+                    group_statistics['timestamp'] = get_min(ts_list)
+
+                    ts_start = timeutils.parse_isotime(
+                        group_statistics['timestamp']).replace(tzinfo=None)
+
+                    ts_end = timeutils.parse_isotime(
+                        group_statistics['end_timestamp']).replace(tzinfo=None)
+
+                    del group_statistics['end_timestamp']
+                    if ts_start and ts_end:
+                        yield api_models.Statistics(
+                            unit=unit,
+                            period=period,
+                            period_start=ts_start,
+                            period_end=ts_end,
+                            duration=period,
+                            duration_start=ts_start,
+                            duration_end=ts_end,
+                            groupby={groupby: group_key},
+                            **group_statistics
+                        )
+        else:
+            _search_args['merge_metrics'] = True
             stats_list = self.mc.statistics_list(**_search_args)
             for stats in stats_list:
                 for s in stats['statistics']:
@@ -661,18 +648,19 @@ class Connection(base.Connection):
                             key = '%s%s' % (a.func, '/%s' % a.param if a.param
                                             else '')
                             stats_dict['aggregate'][key] = stats_dict.get(key)
-
-                    yield api_models.Statistics(
-                        unit=stats['dimensions'].get('unit'),
-                        period=period,
-                        period_start=ts_start,
-                        period_end=ts_end,
-                        duration=period,
-                        duration_start=ts_start,
-                        duration_end=ts_end,
-                        groupby={u'': u''},
-                        **stats_dict
-                    )
+                    unit = stats['dimensions'].get('unit')
+                    if ts_start and ts_end:
+                        yield api_models.Statistics(
+                            unit=unit,
+                            period=period,
+                            period_start=ts_start,
+                            period_end=ts_end,
+                            duration=period,
+                            duration_start=ts_start,
+                            duration_end=ts_end,
+                            groupby={u'': u''},
+                            **stats_dict
+                        )
 
     def _parse_to_filter_list(self, filter_expr):
         """Parse complex query expression to simple filter list.
