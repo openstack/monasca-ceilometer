@@ -22,7 +22,7 @@ from oslo_utils import timeutils
 from oslotest import base
 
 import ceilometer
-from ceilometer.api.controllers.v2.meters import Aggregate
+from ceilometer.api.controllers.v2 import meters
 from ceilometer import storage
 from ceilometer.storage import impl_monasca
 from ceilometer.storage import models as storage_models
@@ -592,7 +592,7 @@ class MeterStatisticsTest(_BaseTestCase):
 
             sf = storage.SampleFilter()
             sf.meter = "image"
-            aggregate = Aggregate()
+            aggregate = meters.Aggregate()
             aggregate.func = 'min'
             sf.start_timestamp = timeutils.parse_isotime(
                 '2014-10-24T12:12:42').replace(tzinfo=None)

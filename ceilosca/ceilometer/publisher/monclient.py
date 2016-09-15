@@ -24,7 +24,7 @@ import ceilometer
 from ceilometer.i18n import _
 from ceilometer import monasca_client as mon_client
 from ceilometer import publisher
-from ceilometer.publisher.monasca_data_filter import MonascaDataFilter
+from ceilometer.publisher import monasca_data_filter
 
 from monascaclient import exc
 
@@ -89,7 +89,7 @@ class MonascaPublisher(publisher.PublisherBase):
         self.time_of_last_batch_run = time.time()
 
         self.mon_client = mon_client.Client(parsed_url)
-        self.mon_filter = MonascaDataFilter()
+        self.mon_filter = monasca_data_filter.MonascaDataFilter()
 
         batch_timer = loopingcall.FixedIntervalLoopingCall(self.flush_batch)
         batch_timer.start(interval=cfg.CONF.monasca.batch_polling_interval)
