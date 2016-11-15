@@ -15,20 +15,76 @@
 
 import collections
 import datetime
+import os
+
 import dateutil.parser
 import mock
 from oslo_config import fixture as fixture_config
+from oslo_utils import fileutils
 from oslo_utils import timeutils
 from oslotest import base
+import six
+import yaml
 
 import ceilometer
-from ceilometer.api.controllers.v2 import meters
+from ceilometer.api.controllers.v2.meters import Aggregate
+from ceilometer.ceilosca_mapping import ceilometer_static_info_mapping
+from ceilometer.ceilosca_mapping import ceilosca_mapping
 from ceilometer import storage
 from ceilometer.storage import impl_monasca
 from ceilometer.storage import models as storage_models
 
 
-class TestGetResources(base.BaseTestCase):
+class _BaseTestCase(base.BaseTestCase):
+
+    def setUp(self):
+        super(_BaseTestCase, self).setUp()
+        content = ("[service_credentials]\n"
+                   "auth_type = password\n"
+                   "username = ceilometer\n"
+                   "password = admin\n"
+                   "auth_url = http://localhost:5000/v2.0\n")
+        tempfile = fileutils.write_to_tempfile(content=content,
+                                               prefix='ceilometer',
+                                               suffix='.conf')
+        self.addCleanup(os.remove, tempfile)
+        conf = self.useFixture(fixture_config.Config()).conf
+        conf([], default_config_files=[tempfile])
+        self.CONF = conf
+        mdf = mock.patch.object(impl_monasca, 'MonascaDataFilter')
+        mdf.start()
+        self.addCleanup(mdf.stop)
+        spl = mock.patch('ceilometer.pipeline.setup_pipeline')
+        spl.start()
+        self.addCleanup(spl.stop)
+        self.static_info_mapper = ceilometer_static_info_mapping\
+            .ProcessMappedCeilometerStaticInfo()
+        self.static_info_mapper.reinitialize()
+
+    def assertRaisesWithMessage(self, msg, exc_class, func, *args, **kwargs):
+        try:
+            func(*args, **kwargs)
+            self.fail('Expecting %s exception, none raised' %
+                      exc_class.__name__)
+        except AssertionError:
+            raise
+        # Only catch specific exception so we can get stack trace when fail
+        except exc_class as e:
+            self.assertEqual(msg, e.message)
+
+    def assert_raise_within_message(self, msg, e_cls, func, *args, **kwargs):
+        try:
+            func(*args, **kwargs)
+            self.fail('Expecting %s exception, none raised' %
+                      e_cls.__name__)
+        except AssertionError:
+            raise
+        # Only catch specific exception so we can get stack trace when fail
+        except e_cls as e:
+            self.assertIn(msg, '%s' % e)
+
+
+class TestGetResources(_BaseTestCase):
 
     dummy_get_resources_mocked_return_value = (
         [{u'dimensions': {},
@@ -37,13 +93,50 @@ class TestGetResources(base.BaseTestCase):
           u'columns': [u'timestamp', u'value', u'value_meta'],
           u'name': u'image'}])
 
+    cfg = yaml.dump({
+                    'meter_metric_map': [{
+                        'user_id': '$.dimensions.user_id',
+                        'name': 'network.incoming.rate',
+                        'resource_id': '$.dimensions.resource_id',
+                        'region': 'NA',
+                        'monasca_metric_name': 'vm.net.in_rate',
+                        'source': 'NA',
+                        'project_id': '$.dimensions.tenant_id',
+                        'type': 'gauge',
+                        'resource_metadata': '$.measurements[0][2]',
+                        'unit': 'B/s'
+                    }, {
+                        'user_id': '$.dimensions.user_id',
+                        'name': 'network.outgoing.rate',
+                        'resource_id': '$.dimensions.resource_id',
+                        'region': 'NA',
+                        'monasca_metric_name': 'vm.net.out_rate',
+                        'source': 'NA',
+                        'project_id': '$.dimensions.project_id',
+                        'type': 'delta',
+                        'resource_metadata': '$.measurements[0][2]',
+                        'unit': 'B/s'
+                    }]
+                    })
+
+    def setup_ceilosca_mapping_def_file(self, cfg):
+        if six.PY3:
+            cfg = cfg.encode('utf-8')
+        ceilosca_mapping_file = fileutils.write_to_tempfile(
+            content=cfg, prefix='ceilosca_mapping', suffix='yaml')
+        self.addCleanup(os.remove, ceilosca_mapping_file)
+        return ceilosca_mapping_file
+
     def setUp(self):
         super(TestGetResources, self).setUp()
-        self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], project='ceilometer', validate_default_values=True)
+        ceilosca_mapping_file = self.setup_ceilosca_mapping_def_file(
+            TestGetResources.cfg)
+        self.CONF.set_override('ceilometer_monasca_metrics_mapping',
+                               ceilosca_mapping_file, group='monasca')
+        ceilosca_mapper = ceilosca_mapping.ProcessMappedCeiloscaMetric()
+        ceilosca_mapper.reinitialize()
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_not_implemented_params(self, mock_mdf):
+    def test_not_implemented_params(self):
         with mock.patch("ceilometer.monasca_client.Client"):
             conn = impl_monasca.Connection("127.0.0.1:8080")
 
@@ -54,62 +147,100 @@ class TestGetResources(base.BaseTestCase):
             self.assertRaises(ceilometer.NotImplementedError,
                               lambda: list(conn.get_resources(**kwargs)))
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_dims_filter(self, mdf_patch):
+    def test_dims_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
-            start_timestamp = timeutils.isotime(datetime.datetime(1970, 1, 1))
-            mnl_mock = mock_client().metrics_list
+            mnl_mock = mock_client().metric_names_list
             mnl_mock.return_value = [
                 {
-                    'name': 'some',
-                    'dimensions': {}
+                    "id": "335b5d569ad29dc61b3dc24609fad3619e947944",
+                    "name": "some"
                 }
             ]
-            kwargs = dict(project='proj1')
+            end_time = datetime.datetime(2015, 4, 1, 12, 00, 00)
+            kwargs = dict(project='proj1',
+                          end_timestamp=end_time)
             list(conn.get_resources(**kwargs))
             self.assertEqual(True, mnl_mock.called)
-            self.assertEqual(dict(dimensions=dict(
-                             project_id='proj1'), start_time=start_timestamp),
-                             mnl_mock.call_args[1])
-            self.assertEqual(1, mnl_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_resources(self, mock_mdf):
+            expected = [
+                mock.call(
+                    dimensions={
+                        'project_id': 'proj1'}),
+                mock.call(
+                    dimensions={
+                        'tenant_id': 'proj1'})
+            ]
+            self.assertTrue(expected == mnl_mock.call_args_list)
+            self.assertEqual(2, mnl_mock.call_count)
+
+    @mock.patch('oslo_utils.timeutils.utcnow')
+    def test_get_resources(self, mock_utcnow):
+        mock_utcnow.return_value = datetime.datetime(2016, 4, 7, 18, 20)
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
-            mnl_mock = mock_client().metrics_list
-            mnl_mock.return_value = [{'name': 'metric1',
-                                      'dimensions': {}},
-                                     {'name': 'metric2',
-                                      'dimensions': {}}
-                                     ]
+            mnl_mock = mock_client().metric_names_list
+            mnl_mock.return_value = [
+                {
+                    "id": "335b5d569ad29dc61b3dc24609fad3619e947944",
+                    "name": "storage.objects.size"
+                },
+                {
+                    "id": "335b5d569ad29dc61b3dc24609fad3619e947944",
+                    "name": "vm.net.in_rate"
+                }
+            ]
+
             kwargs = dict(source='openstack')
             ml_mock = mock_client().measurements_list
-            ml_mock.return_value = (
-                TestGetResources.dummy_get_resources_mocked_return_value)
+            data1 = (
+                [{u'dimensions': {u'resource_id': u'abcd',
+                                  u'datasource': u'ceilometer'},
+                  u'measurements': [[u'2015-04-14T17:52:31Z', 1.0, {}],
+                                    [u'2015-04-15T17:52:31Z', 2.0, {}],
+                                    [u'2015-04-16T17:52:31Z', 3.0, {}]],
+                  u'id': u'2015-04-14T18:42:31Z',
+                  u'columns': [u'timestamp', u'value', u'value_meta'],
+                  u'name': u'storage.objects.size'}])
+
+            data2 = (
+                [{u'dimensions': {u'resource_id': u'abcd',
+                                  u'datasource': u'ceilometer'},
+                  u'measurements': [[u'2015-04-14T17:52:31Z', 1.0, {}],
+                                    [u'2015-04-15T17:52:31Z', 2.0, {}],
+                                    [u'2015-04-16T17:52:31Z', 3.0, {}]],
+                  u'id': u'2015-04-14T18:42:31Z',
+                  u'columns': [u'timestamp', u'value', u'value_meta'],
+                  u'name': u'vm.net.in_rate'}])
+            ml_mock.side_effect = [data1, data2]
             list(conn.get_resources(**kwargs))
             self.assertEqual(2, ml_mock.call_count)
-            self.assertEqual(dict(dimensions={},
-                                  name='metric1',
-                                  limit=1,
-                                  start_time='1970-01-01T00:00:00Z'),
+            self.assertEqual(dict(dimensions=dict(datasource='ceilometer',
+                                                  source='openstack'),
+                                  name='storage.objects.size',
+                                  start_time='1970-01-01T00:00:00.000000Z',
+                                  group_by='*',
+                                  end_time='2016-04-07T18:20:00.000000Z'),
                              ml_mock.call_args_list[0][1])
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_resources_limit(self, mdf_mock):
+    def test_get_resources_limit(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
 
-            mnl_mock = mock_client().metrics_list
-            mnl_mock.return_value = [{'name': 'metric1',
-                                      'dimensions': {'resource_id': 'abcd'}},
-                                     {'name': 'metric2',
-                                      'dimensions': {'resource_id': 'abcd'}}
-                                     ]
-
+            mnl_mock = mock_client().metric_names_list
+            mnl_mock.return_value = [
+                {
+                    "id": "335b5d569ad29dc61b3dc24609fad3619e947944",
+                    "name": "storage.objects.size"
+                },
+                {
+                    "id": "335b5d569ad29dc61b3dc24609fad3619e947944",
+                    "name": "vm.net.in_rate"
+                }
+            ]
             dummy_get_resources_mocked_return_value = (
-                [{u'dimensions': {u'resource_id': u'abcd'},
+                [{u'dimensions': {u'resource_id': u'abcd',
+                                  u'datasource': u'ceilometer'},
                   u'measurements': [[u'2015-04-14T17:52:31Z', 1.0, {}],
                                     [u'2015-04-15T17:52:31Z', 2.0, {}],
                                     [u'2015-04-16T17:52:31Z', 3.0, {}]],
@@ -119,10 +250,6 @@ class TestGetResources(base.BaseTestCase):
 
             ml_mock = mock_client().measurements_list
             ml_mock.return_value = (
-                TestGetSamples.dummy_metrics_mocked_return_value
-            )
-            ml_mock = mock_client().measurements_list
-            ml_mock.return_value = (
                 dummy_get_resources_mocked_return_value)
 
             sample_filter = storage.SampleFilter(
@@ -130,39 +257,73 @@ class TestGetResources(base.BaseTestCase):
             resources = list(conn.get_resources(sample_filter, limit=2))
             self.assertEqual(2, len(resources))
             self.assertEqual(True, ml_mock.called)
-            self.assertEqual(2, ml_mock.call_count)
+            self.assertEqual(1, ml_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_resources_simple_metaquery(self, mock_mdf):
+    @mock.patch('oslo_utils.timeutils.utcnow')
+    def test_get_resources_simple_metaquery(self, mock_utcnow):
+        mock_utcnow.return_value = datetime.datetime(2016, 4, 7, 18, 28)
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
-            mnl_mock = mock_client().metrics_list
-            mnl_mock.return_value = [{'name': 'metric1',
-                                      'dimensions': {},
-                                      'value_meta': {'key': 'value1'}},
-                                     {'name': 'metric2',
-                                      'dimensions': {},
-                                      'value_meta': {'key': 'value2'}},
-                                     ]
+            mnl_mock = mock_client().metric_names_list
+            mnl_mock.return_value = [
+                {
+                    "id": "335b5d569ad29dc61b3dc24609fad3619e947944",
+                    "name": "storage.objects.size"
+                },
+                {
+                    "id": "335b5d569ad29dc61b3dc24609fad3619e947944",
+                    "name": "vm.net.in_rate"
+                }
+            ]
             kwargs = dict(metaquery={'metadata.key': 'value1'})
 
             ml_mock = mock_client().measurements_list
-            ml_mock.return_value = (
-                TestGetResources.dummy_get_resources_mocked_return_value)
+            data1 = (
+                [{u'dimensions': {u'resource_id': u'abcd',
+                                  u'datasource': u'ceilometer'},
+                  u'measurements': [[u'2015-04-14T17:52:31Z', 1.0, {}],
+                                    [u'2015-04-15T17:52:31Z', 2.0, {}],
+                                    [u'2015-04-16T17:52:31Z', 3.0, {}]],
+                  u'id': u'2015-04-14T18:42:31Z',
+                  u'columns': [u'timestamp', u'value', u'value_meta'],
+                  u'name': u'storage.objects.size'}])
+
+            data2 = (
+                [{u'dimensions': {u'resource_id': u'abcd',
+                                  u'datasource': u'ceilometer'},
+                  u'measurements': [[u'2015-04-14T17:52:31Z', 1.0, {}],
+                                    [u'2015-04-15T17:52:31Z', 2.0, {}],
+                                    [u'2015-04-16T17:52:31Z', 3.0, {}]],
+                  u'id': u'2015-04-14T18:42:31Z',
+                  u'columns': [u'timestamp', u'value', u'value_meta'],
+                  u'name': u'vm.net.in_rate'}])
+
+            ml_mock.side_effect = [data1, data2]
             list(conn.get_resources(**kwargs))
 
             self.assertEqual(2, ml_mock.call_count)
-            self.assertEqual(dict(dimensions={},
-                                  name='metric2',
-                                  limit=1,
-                                  start_time='1970-01-01T00:00:00Z'),
-                             ml_mock.call_args_list[1][1])
+            self.assertEqual(dict(dimensions=dict(datasource='ceilometer'),
+                                  name="storage.objects.size",
+                                  start_time='1970-01-01T00:00:00.000000Z',
+                                  group_by='*',
+                                  end_time='2016-04-07T18:28:00.000000Z'),
+                             ml_mock.call_args_list[0][1])
 
 
-class MeterTest(base.BaseTestCase):
+class MeterTest(_BaseTestCase):
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_not_implemented_params(self, mock_mdf):
+    dummy_metrics_mocked_return_value = (
+        [{u'dimensions': {u'datasource': u'ceilometer'},
+          u'id': u'2015-04-14T18:42:31Z',
+          u'name': u'meter-1'},
+         {u'dimensions': {u'datasource': u'ceilometer'},
+          u'id': u'2015-04-15T18:42:31Z',
+          u'name': u'meter-1'},
+         {u'dimensions': {u'datasource': u'ceilometer'},
+          u'id': u'2015-04-16T18:42:31Z',
+          u'name': u'meter-2'}])
+
+    def test_not_implemented_params(self):
         with mock.patch('ceilometer.monasca_client.Client'):
             conn = impl_monasca.Connection('127.0.0.1:8080')
 
@@ -170,8 +331,7 @@ class MeterTest(base.BaseTestCase):
             self.assertRaises(ceilometer.NotImplementedError,
                               lambda: list(conn.get_meters(**kwargs)))
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_metrics_list_call(self, mock_mdf):
+    def test_metrics_list_call(self):
         with mock.patch('ceilometer.monasca_client.Client') as mock_client:
             conn = impl_monasca.Connection('127.0.0.1:8080')
             metrics_list_mock = mock_client().metrics_list
@@ -181,20 +341,70 @@ class MeterTest(base.BaseTestCase):
                           resource='resource-1',
                           source='openstack',
                           limit=100)
-
             list(conn.get_meters(**kwargs))
 
             self.assertEqual(True, metrics_list_mock.called)
-            self.assertEqual(1, metrics_list_mock.call_count)
+            self.assertEqual(4, metrics_list_mock.call_count)
+            expected = [
+                mock.call(
+                    dimensions={
+                        'source': 'openstack',
+                        'project_id': 'project-1',
+                        'user_id': 'user-1',
+                        'datasource': 'ceilometer',
+                        'resource_id': 'resource-1'}),
+                mock.call(
+                    dimensions={
+                        'source': 'openstack',
+                        'project_id': 'project-1',
+                        'user_id': 'user-1',
+                        'resource_id': 'resource-1'}),
+                mock.call(
+                    dimensions={
+                        'source': 'openstack',
+                        'tenant_id': 'project-1',
+                        'user_id': 'user-1',
+                        'resource_id': 'resource-1'}),
+                mock.call(
+                    dimensions={
+                        'source': 'openstack',
+                        'project_id': 'project-1',
+                        'user_id': 'user-1',
+                        'hostname': 'resource-1'})
+            ]
+            self.assertTrue(expected == metrics_list_mock.call_args_list)
+
+    def test_unique_metrics_list_call(self):
+        dummy_metric_names_mocked_return_value = (
+            [{"id": "015c995b1a770147f4ef18f5841ef566ab33521d",
+              "name": "network.delete"},
+             {"id": "335b5d569ad29dc61b3dc24609fad3619e947944",
+              "name": "subnet.update"}])
+        with mock.patch('ceilometer.monasca_client.Client') as mock_client:
+            conn = impl_monasca.Connection('127.0.0.1:8080')
+            metric_names_list_mock = mock_client().metric_names_list
+            metric_names_list_mock.return_value = (
+                dummy_metric_names_mocked_return_value
+            )
+            kwargs = dict(user='user-1',
+                          project='project-1',
+                          resource='resource-1',
+                          source='openstack',
+                          limit=2,
+                          unique=True)
+
+            self.assertEqual(2, len(list(conn.get_meters(**kwargs))))
+
+            self.assertEqual(True, metric_names_list_mock.called)
+            self.assertEqual(1, metric_names_list_mock.call_count)
             self.assertEqual(dict(dimensions=dict(user_id='user-1',
                                                   project_id='project-1',
                                                   resource_id='resource-1',
-                                                  source='openstack'),
-                                  limit=100),
-                             metrics_list_mock.call_args[1])
+                                                  source='openstack')),
+                             metric_names_list_mock.call_args[1])
 
 
-class TestGetSamples(base.BaseTestCase):
+class TestGetSamples(_BaseTestCase):
 
     dummy_get_samples_mocked_return_value = (
         [{u'dimensions': {},
@@ -208,33 +418,25 @@ class TestGetSamples(base.BaseTestCase):
           u'id': u'2015-04-14T18:42:31Z',
           u'name': u'specific meter'}])
 
-    def setUp(self):
-        super(TestGetSamples, self).setUp()
-        self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], project='ceilometer', validate_default_values=True)
+    dummy_get_samples_mocked_return_extendedkey_value = (
+        [{u'dimensions': {},
+          u'measurements': [[u'2015-04-14T17:52:31Z',
+                             1.0,
+                             {'image_meta.base_url': 'base_url'}]],
+          u'id': u'2015-04-14T18:42:31Z',
+          u'columns': [u'timestamp', u'value', u'value_meta'],
+          u'name': u'image'}])
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_not_implemented_params(self, mdf_mock):
+    def test_get_samples_not_implemented_params(self):
         with mock.patch("ceilometer.monasca_client.Client"):
             conn = impl_monasca.Connection("127.0.0.1:8080")
-
-            sample_filter = storage.SampleFilter(meter='specific meter',
-                                                 start_timestamp_op='<')
-            self.assertRaises(ceilometer.NotImplementedError,
-                              lambda: list(conn.get_samples(sample_filter)))
-
-            sample_filter = storage.SampleFilter(meter='specific meter',
-                                                 end_timestamp_op='>')
-            self.assertRaises(ceilometer.NotImplementedError,
-                              lambda: list(conn.get_samples(sample_filter)))
 
             sample_filter = storage.SampleFilter(meter='specific meter',
                                                  message_id='specific message')
             self.assertRaises(ceilometer.NotImplementedError,
                               lambda: list(conn.get_samples(sample_filter)))
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_name(self, mdf_mock):
+    def test_get_samples_name(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
@@ -249,15 +451,14 @@ class TestGetSamples(base.BaseTestCase):
             list(conn.get_samples(sample_filter))
             self.assertEqual(True, ml_mock.called)
             self.assertEqual(dict(
-                dimensions={},
-                start_time='1970-01-01T00:00:00Z',
-                merge_metrics=False, name='specific meter',
-                end_time='2015-04-20T00:00:00Z'),
+                dimensions=dict(datasource='ceilometer'),
+                start_time='1970-01-01T00:00:00.000000Z',
+                group_by='*', name='specific meter',
+                end_time='2015-04-20T00:00:00.000000Z'),
                 ml_mock.call_args[1])
             self.assertEqual(1, ml_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_start_timestamp_filter(self, mdf_mock):
+    def test_get_samples_start_timestamp_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
 
@@ -279,8 +480,40 @@ class TestGetSamples(base.BaseTestCase):
             self.assertEqual(True, ml_mock.called)
             self.assertEqual(1, ml_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_limit(self, mdf_mock):
+    def test_get_samples_timestamp_filter_exclusive_range(self):
+        with mock.patch("ceilometer.monasca_client.Client") as mock_client:
+            conn = impl_monasca.Connection("127.0.0.1:8080")
+
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                TestGetSamples.dummy_metrics_mocked_return_value
+            )
+            ml_mock = mock_client().measurements_list
+            ml_mock.return_value = (
+                TestGetSamples.dummy_get_samples_mocked_return_value)
+
+            start_time = datetime.datetime(2015, 3, 20)
+            end_time = datetime.datetime(2015, 4, 1, 12, 00, 00)
+
+            sample_filter = storage.SampleFilter(
+                meter='specific meter',
+                start_timestamp=timeutils.isotime(start_time),
+                start_timestamp_op='gt',
+                end_timestamp=timeutils.isotime(end_time),
+                end_timestamp_op='lt')
+            list(conn.get_samples(sample_filter))
+            self.assertEqual(True, ml_mock.called)
+            self.assertEqual(1, ml_mock.call_count)
+            self.assertEqual(dict(dimensions=dict(datasource='ceilometer'),
+                                  name='specific meter',
+                                  start_time='2015-03-20T00:00:00.001000Z',
+                                  end_time='2015-04-01T11:59:59.999000Z',
+                                  start_timestamp_op='ge',
+                                  end_timestamp_op='le',
+                                  group_by='*'),
+                             ml_mock.call_args_list[0][1])
+
+    def test_get_samples_limit(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
 
@@ -309,8 +542,7 @@ class TestGetSamples(base.BaseTestCase):
             self.assertEqual(True, ml_mock.called)
             self.assertEqual(1, ml_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_project_filter(self, mock_mdf):
+    def test_get_samples_project_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
@@ -330,8 +562,7 @@ class TestGetSamples(base.BaseTestCase):
             self.assertEqual(True, ml_mock.called)
             self.assertEqual(1, ml_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_resource_filter(self, mock_mdf):
+    def test_get_samples_resource_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
@@ -350,8 +581,7 @@ class TestGetSamples(base.BaseTestCase):
             self.assertEqual(True, ml_mock.called)
             self.assertEqual(1, ml_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_source_filter(self, mdf_mock):
+    def test_get_samples_source_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
@@ -370,8 +600,7 @@ class TestGetSamples(base.BaseTestCase):
             self.assertEqual(True, ml_mock.called)
             self.assertEqual(1, ml_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_simple_metaquery(self, mdf_mock):
+    def test_get_samples_simple_metaquery(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
@@ -389,14 +618,33 @@ class TestGetSamples(base.BaseTestCase):
             self.assertEqual(True, ml_mock.called)
             self.assertEqual(1, ml_mock.call_count)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_get_samples_results(self, mdf_mock):
+    def test_get_samples_simple_metaquery_with_extended_key(self):
+        with mock.patch("ceilometer.monasca_client.Client") as mock_client:
+            conn = impl_monasca.Connection("127.0.0.1:8080")
+            metrics_list_mock = mock_client().metrics_list
+            metrics_list_mock.return_value = (
+                TestGetSamples.dummy_metrics_mocked_return_value
+            )
+            ml_mock = mock_client().measurements_list
+            ml_mock.return_value = (
+                TestGetSamples.
+                dummy_get_samples_mocked_return_extendedkey_value
+            )
+            sample_filter = storage.SampleFilter(
+                meter='specific meter',
+                metaquery={'metadata.image_meta.base_url': u'base_url'})
+            self.assertTrue(len(list(conn.get_samples(sample_filter))) > 0)
+            self.assertEqual(True, ml_mock.called)
+            self.assertEqual(1, ml_mock.call_count)
+
+    def test_get_samples_results(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
                 [{u'dimensions': {
                     'source': 'some source',
+                    'datasource': 'ceilometer',
                     'project_id': 'some project ID',
                     'resource_id': 'some resource ID',
                     'type': 'some type',
@@ -409,6 +657,7 @@ class TestGetSamples(base.BaseTestCase):
             ml_mock.return_value = (
                 [{u'dimensions': {
                     'source': 'some source',
+                    'datasource': 'ceilometer',
                     'project_id': 'some project ID',
                     'resource_id': 'some resource ID',
                     'type': 'some type',
@@ -421,7 +670,7 @@ class TestGetSamples(base.BaseTestCase):
                   u'name': u'image'}])
 
             sample_filter = storage.SampleFilter(
-                meter='specific meter',
+                meter='image',
                 start_timestamp='2015-03-20T00:00:00Z')
             results = list(conn.get_samples(sample_filter))
             self.assertEqual(True, ml_mock.called)
@@ -463,25 +712,11 @@ class TestGetSamples(base.BaseTestCase):
             self.assertEqual(1, ml_mock.call_count)
 
 
-class _BaseTestCase(base.BaseTestCase):
-    def assertRaisesWithMessage(self, msg, exc_class, func, *args, **kwargs):
-        try:
-            func(*args, **kwargs)
-            self.fail('Expecting %s exception, none raised' %
-                      exc_class.__name__)
-        except AssertionError:
-            raise
-        # Only catch specific exception so we can get stack trace when fail
-        except exc_class as e:
-            self.assertEqual(msg, e.message)
-
-
 class MeterStatisticsTest(_BaseTestCase):
 
     Aggregate = collections.namedtuple("Aggregate", ['func', 'param'])
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_not_implemented_params(self, mock_mdf):
+    def test_not_implemented_params(self):
         with mock.patch("ceilometer.monasca_client.Client"):
             conn = impl_monasca.Connection("127.0.0.1:8080")
 
@@ -542,8 +777,9 @@ class MeterStatisticsTest(_BaseTestCase):
                                              conn.get_meter_statistics(
                                                  sf, aggregate=aggregate)))
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_stats_list_called_with(self, mock_mdf):
+    @mock.patch('oslo_utils.timeutils.utcnow')
+    def test_stats_list_called_with(self, mock_utcnow):
+        mock_utcnow.return_value = datetime.datetime(2016, 4, 7, 18, 31)
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
             sl_mock = mock_client().statistics_list
@@ -563,9 +799,11 @@ class MeterStatisticsTest(_BaseTestCase):
                  'dimensions': {'source': 'source_id',
                                 'project_id': 'project_id',
                                 'user_id': 'user_id',
-                                'resource_id': 'resource_id'
+                                'resource_id': 'resource_id',
+                                'datasource': 'ceilometer'
                                 },
-                 'start_time': '1970-01-01T00:00:00Z',
+                 'end_time': '2016-04-07T18:31:00.000000Z',
+                 'start_time': '1970-01-01T00:00:00.000000Z',
                  'period': 10,
                  'statistics': 'min',
                  'name': 'image'
@@ -573,8 +811,7 @@ class MeterStatisticsTest(_BaseTestCase):
                 sl_mock.call_args[1]
             )
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_stats_list(self, mock_mdf):
+    def test_stats_list(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
             sl_mock = mock_client().statistics_list
@@ -592,7 +829,7 @@ class MeterStatisticsTest(_BaseTestCase):
 
             sf = storage.SampleFilter()
             sf.meter = "image"
-            aggregate = meters.Aggregate()
+            aggregate = Aggregate()
             aggregate.func = 'min'
             sf.start_timestamp = timeutils.parse_isotime(
                 '2014-10-24T12:12:42').replace(tzinfo=None)
@@ -612,8 +849,7 @@ class MeterStatisticsTest(_BaseTestCase):
             self.assertIsNotNone(stats[0].as_dict().get('aggregate'))
             self.assertEqual({u'min': 0.008}, stats[0].as_dict()['aggregate'])
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_stats_list_with_groupby(self, mock_mdf):
+    def test_stats_list_with_groupby(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
             conn = impl_monasca.Connection("127.0.0.1:8080")
             sl_mock = mock_client().statistics_list
@@ -672,38 +908,32 @@ class MeterStatisticsTest(_BaseTestCase):
 
 
 class TestQuerySamples(_BaseTestCase):
-    def setUp(self):
-        super(TestQuerySamples, self).setUp()
-        self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], project='ceilometer', validate_default_values=True)
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_query_samples_not_implemented_params(self, mdf_mock):
+    def test_query_samples_not_implemented_params(self):
         with mock.patch("ceilometer.monasca_client.Client"):
             conn = impl_monasca.Connection("127.0.0.1:8080")
-            query = {'or': [{'=': {"project_id": "123"}},
-                            {'=': {"user_id": "456"}}]}
+            query = {'and': [{'=': {'counter_name': 'instance'}},
+                             {'or': [{'=': {"project_id": "123"}},
+                                     {'=': {"user_id": "456"}}]}]}
 
             self.assertRaisesWithMessage(
                 'fitler must be specified',
                 ceilometer.NotImplementedError,
                 lambda: list(conn.query_samples()))
-            self.assertRaisesWithMessage(
-                'limit must be specified',
-                ceilometer.NotImplementedError,
-                lambda: list(conn.query_samples(query)))
             order_by = [{"timestamp": "desc"}]
             self.assertRaisesWithMessage(
                 'orderby is not supported',
                 ceilometer.NotImplementedError,
                 lambda: list(conn.query_samples(query, order_by)))
-            self.assertRaisesWithMessage(
-                'Supply meter name at the least',
-                ceilometer.NotImplementedError,
+
+            query = {'or': [{'=': {"project_id": "123"}},
+                            {'=': {"user_id": "456"}}]}
+            self.assert_raise_within_message(
+                'meter name is not found in',
+                impl_monasca.InvalidInputException,
                 lambda: list(conn.query_samples(query, None, 1)))
 
-    @mock.patch("ceilometer.storage.impl_monasca.MonascaDataFilter")
-    def test_query_samples(self, mdf_mock):
+    def test_query_samples(self):
         SAMPLES = [[
             storage_models.Sample(
                 counter_name="instance",
@@ -730,18 +960,59 @@ class TestQuerySamples(_BaseTestCase):
             with mock.patch.object(conn, 'get_samples') as gsm:
                 gsm.side_effect = _get_samples
 
-                query = {'or': [{'=': {"project_id": "123"}},
-                                {'=': {"user_id": "456"}}]}
+                query = {'and': [{'=': {'counter_name': 'instance'}},
+                                 {'or': [{'=': {"project_id": "123"}},
+                                         {'=': {"user_id": "456"}}]}]}
                 samples = conn.query_samples(query, None, 100)
                 self.assertEqual(2, len(samples))
                 self.assertEqual(2, gsm.call_count)
 
                 samples = SAMPLES[:]
-                query = {'and': [{'=': {"project_id": "123"}},
-                                 {'>': {"counter_volume": 2}}]}
+                query = {'and': [{'=': {'counter_name': 'instance'}},
+                                 {'or': [{'=': {"project_id": "123"}},
+                                         {'>': {"counter_volume": 2}}]}]}
                 samples = conn.query_samples(query, None, 100)
-                self.assertEqual(0, len(samples))
-                self.assertEqual(3, gsm.call_count)
+                self.assertEqual(1, len(samples))
+                self.assertEqual(4, gsm.call_count)
+
+    def test_query_samples_timestamp_gt_lt(self):
+        SAMPLES = [[
+            storage_models.Sample(
+                counter_name="instance",
+                counter_type="gauge",
+                counter_unit="instance",
+                counter_volume=1,
+                project_id="123",
+                user_id="456",
+                resource_id="789",
+                resource_metadata={},
+                source="openstack",
+                recorded_at=timeutils.utcnow(),
+                timestamp=timeutils.utcnow(),
+                message_id="0",
+                message_signature='',)
+        ]] * 2
+        samples = SAMPLES[:]
+
+        def _get_samples(*args, **kwargs):
+            return samples.pop()
+
+        with mock.patch("ceilometer.monasca_client.Client"):
+            conn = impl_monasca.Connection("127.0.0.1:8080")
+            with mock.patch.object(conn, 'get_samples') as gsm:
+                gsm.side_effect = _get_samples
+
+                start = datetime.datetime(2014, 10, 24, 13, 52, 42)
+                end = datetime.datetime(2014, 10, 24, 14, 52, 42)
+                ts_query = {
+                    'or': [{'>': {"timestamp": start}},
+                           {'<': {"timestamp": end}}]
+                }
+                query = {'and': [{'=': {'counter_name': 'instance'}},
+                                 ts_query]}
+                samples = conn.query_samples(query, None, 100)
+                self.assertEqual(2, len(samples))
+                self.assertEqual(2, gsm.call_count)
 
 
 class CapabilitiesTest(base.BaseTestCase):
@@ -752,7 +1023,6 @@ class CapabilitiesTest(base.BaseTestCase):
                 {
                     'query':
                         {
-                            'complex': False,
                             'metadata': False,
                             'simple': True
                         }
@@ -761,13 +1031,11 @@ class CapabilitiesTest(base.BaseTestCase):
                 {
                     'query':
                         {
-                            'complex': False, 'metadata': True, 'simple': True
+                            'metadata': True, 'simple': True
                         }
                 },
             'samples':
                 {
-                    'groupby': False,
-                    'pagination': False,
                     'query':
                         {
                             'complex': True,
@@ -793,9 +1061,15 @@ class CapabilitiesTest(base.BaseTestCase):
                     'groupby': False,
                     'query':
                         {
-                            'complex': False,
                             'metadata': False,
                             'simple': True
+                        }
+                },
+            'events':
+                {
+                    'query':
+                        {
+                            'simple': False
                         }
                 }
         }

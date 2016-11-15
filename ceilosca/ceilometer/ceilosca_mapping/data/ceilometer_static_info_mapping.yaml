@@ -1,0 +1,147 @@
+#reference: http://docs.openstack.org/admin-guide/telemetry-measurements.html
+---
+
+meter_info_static_map:
+    - name: "disk.ephemeral.size"
+      type: "gauge"
+      unit: "GB"
+
+    - name: "disk.root.size"
+      type: "gauge"
+      unit: "GB"
+
+    - name: "image"
+      type: "gauge"
+      unit: "image"
+
+    - name: "image.delete"
+      type: "delta"
+      unit: "image"
+
+    - name: "image.size"
+      type: "gauge"
+      unit: "B"
+
+    - name: "image.update"
+      type: "gauge"
+      unit: "image"
+
+    - name: "image.upload"
+      type: "delta"
+      unit: "image"
+
+    - name: "instance"
+      type: "gauge"
+      unit: "instance"
+
+    - name: "ip.floating"
+      type: "gauge"
+      unit: "ip"
+
+    - name: "ip.floating.create"
+      type: "delta"
+      unit: "ip"
+
+    - name: "ip.floating.update"
+      type: "delta"
+      unit: "ip"
+
+    - name: "memory"
+      type: "gauge"
+      unit: "MB"
+
+    - name: "network"
+      type: "gauge"
+      unit: "network"
+
+    - name: "network.create"
+      type: "delta"
+      unit: "network"
+
+    - name: "network.delete"
+      type: "delta"
+      unit: "network"
+
+    - name: "network.update"
+      type: "delta"
+      unit: "network"
+
+    - name: "port"
+      type: "gauge"
+      unit: "port"
+
+    - name: "port.create"
+      type: "delta"
+      unit: "port"
+
+    - name: "port.delete"
+      type: "delta"
+      unit: "port"
+
+    - name: "port.update"
+      type: "delta"
+      unit: "port"
+
+    - name: "router"
+      type: "gauge"
+      unit: "router"
+
+    - name: "router.create"
+      type: "delta"
+      unit: "router"
+
+    - name: "router.delete"
+      type: "delta"
+      unit: "router"
+
+    - name: "router.update"
+      type: "delta"
+      unit: "router"
+
+    - name: "storage.objects"
+      type: "gauge"
+      unit: "object"
+
+    - name: "storage.objects.containers"
+      type: "gauge"
+      unit: "container"
+
+    - name: "storage.objects.size"
+      type: "gauge"
+      unit: "B"
+
+    - name: "subnet"
+      type: "gauge"
+      unit: "subnet"
+
+    - name: "subnet.create"
+      type: "delta"
+      unit: "subnet"
+
+    - name: "subnet.delete"
+      type: "delta"
+      unit: "subnet"
+
+    - name: "subnet.update"
+      type: "delta"
+      unit: "subnet"
+
+    - name: "vcpus"
+      type: "gauge"
+      unit: "vcpu"
+
+    - name: "volume"
+      type: "gauge"
+      unit: "volume"
+
+    - name: "volume.delete.end"
+      type: "delta"
+      unit: "volume"
+
+    - name: "volume.size"
+      type: "gauge"
+      unit: "GB"
+
+    - name: "volume.update.end"
+      type: "delta"
+      unit: "volume"
