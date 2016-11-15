@@ -16,10 +16,14 @@
 """
 
 import datetime
-import eventlet
+import os
+import time
+
+from keystoneauth1 import loading as ka_loading
 import mock
 from oslo_config import cfg
 from oslo_config import fixture as fixture_config
+from oslo_utils import fileutils
 from oslotest import base
 from oslotest import mockpatch
 
@@ -97,14 +101,6 @@ class TestMonascaPublisher(base.BaseTestCase):
         }
     }
 
-    opts = [
-        cfg.StrOpt("username", default="ceilometer"),
-        cfg.StrOpt("password", default="password"),
-        cfg.StrOpt("auth_url", default="http://192.168.10.6:5000"),
-        cfg.StrOpt("project_name", default="service"),
-        cfg.StrOpt("project_id", default="service"),
-        ]
-
     @staticmethod
     def create_side_effect(exception_type, test_exception):
         def side_effect(*args, **kwargs):
@@ -116,11 +112,31 @@ class TestMonascaPublisher(base.BaseTestCase):
 
     def setUp(self):
         super(TestMonascaPublisher, self).setUp()
+        content = ("[service_credentials]\n"
+                   "auth_type = password\n"
+                   "username = ceilometer\n"
+                   "password = admin\n"
+                   "auth_url = http://localhost:5000/v2.0\n")
+        tempfile = fileutils.write_to_tempfile(content=content,
+                                               prefix='ceilometer',
+                                               suffix='.conf')
+        self.addCleanup(os.remove, tempfile)
         self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], project='ceilometer', validate_default_values=True)
-        self.CONF.register_opts(self.opts, group="service_credentials")
+        self.CONF([], default_config_files=[tempfile])
+        ka_loading.load_auth_from_conf_options(self.CONF,
+                                               "service_credentials")
         self.parsed_url = mock.MagicMock()
         ksclient.KSClient = mock.MagicMock()
+
+    def tearDown(self):
+        # For some reason, cfg.CONF is registered a required option named
+        # auth_url after these tests run, which occasionally blocks test
+        # case test_event_pipeline_endpoint_requeue_on_failure, so we
+        # unregister it here.
+        self.CONF.reset()
+        self.CONF.unregister_opt(cfg.StrOpt('auth_url'),
+                                 group='service_credentials')
+        super(TestMonascaPublisher, self).tearDown()
 
     @mock.patch("ceilometer.publisher.monasca_data_filter."
                 "MonascaDataFilter._get_mapping",
@@ -147,12 +163,11 @@ class TestMonascaPublisher(base.BaseTestCase):
 
         publisher = monclient.MonascaPublisher(self.parsed_url)
         publisher.mon_client = mock.MagicMock()
-
         with mock.patch.object(publisher.mon_client,
                                'metrics_create') as mock_create:
             mock_create.return_value = FakeResponse(204)
             publisher.publish_samples(self.test_data)
-            eventlet.sleep(2)
+            time.sleep(10)
             self.assertEqual(1, mock_create.call_count)
             self.assertEqual(1, mapping_patch.called)
 
@@ -176,7 +191,7 @@ class TestMonascaPublisher(base.BaseTestCase):
                 mon_client.MonascaServiceException,
                 raise_http_error)
             publisher.publish_samples(self.test_data)
-            eventlet.sleep(5)
+            time.sleep(60)
             self.assertEqual(4, mock_create.call_count)
             self.assertEqual(1, mapping_patch.called)
 

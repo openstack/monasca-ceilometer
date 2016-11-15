@@ -31,13 +31,16 @@ class TestMonUtils(base.BaseTestCase):
                            'user_id',
                            'geolocation',
                            'region',
+                           'source',
                            'availability_zone'],
 
             'metadata': {
                 'common': ['event_type',
                            'audit_period_beginning',
                            'audit_period_ending'],
-                'image': ['size', 'status'],
+                'image': ['size', 'status', 'image_meta.base_url',
+                          'image_meta.base_url2', 'image_meta.base_url3',
+                          'image_meta.base_url4'],
                 'image.delete': ['size', 'status'],
                 'image.size': ['size', 'status'],
                 'image.update': ['size', 'status'],
@@ -108,6 +111,18 @@ class TestMonUtils(base.BaseTestCase):
             self.assertIsNone(r['dimensions'].get('project_id'))
             self.assertIsNone(r['dimensions'].get('user_id'))
 
+    def convert_dict_to_list(self, dct, prefix=None, outlst={}):
+        prefix = prefix+'.' if prefix else ""
+        for k, v in dct.items():
+            if type(v) is dict:
+                self.convert_dict_to_list(v, prefix+k, outlst)
+            else:
+                if v is not None:
+                    outlst[prefix+k] = v
+                else:
+                    outlst[prefix+k] = 'None'
+        return outlst
+
     def test_process_sample_metadata(self):
         s = sample.Sample(
             name='image',
@@ -120,8 +135,40 @@ class TestMonUtils(base.BaseTestCase):
             timestamp=datetime.datetime.utcnow().isoformat(),
             resource_metadata={'event_type': 'notification',
                                'status': 'active',
-                               'size': '1500'},
-        )
+                               'image_meta': {'base_url': 'http://image.url',
+                                              'base_url2': '',
+                                              'base_url3': None},
+                               'size': 1500},
+            )
+
+        to_patch = ("ceilometer.publisher.monasca_data_filter."
+                    "MonascaDataFilter._get_mapping")
+        with mock.patch(to_patch, side_effect=[self._field_mappings]):
+            data_filter = mdf.MonascaDataFilter()
+            r = data_filter.process_sample_for_monasca(s)
+            self.assertEqual(s.name, r['name'])
+            self.assertIsNotNone(r.get('value_meta'))
+            self.assertTrue(set(self.convert_dict_to_list(s.resource_metadata).
+                            items()).issubset(set(r['value_meta'].items())))
+
+    def test_process_sample_metadata_with_empty_data(self):
+        s = sample.Sample(
+            name='image',
+            type=sample.TYPE_CUMULATIVE,
+            unit='',
+            volume=1,
+            user_id='test',
+            project_id='test',
+            resource_id='test_run_tasks',
+            source='',
+            timestamp=datetime.datetime.utcnow().isoformat(),
+            resource_metadata={'event_type': 'notification',
+                               'status': 'active',
+                               'image_meta': {'base_url': 'http://image.url',
+                                              'base_url2': '',
+                                              'base_url3': None},
+                               'size': 0},
+            )
 
         to_patch = ("ceilometer.publisher.monasca_data_filter."
                     "MonascaDataFilter._get_mapping")
@@ -131,6 +178,47 @@ class TestMonUtils(base.BaseTestCase):
 
             self.assertEqual(s.name, r['name'])
             self.assertIsNotNone(r.get('value_meta'))
+            self.assertEqual(s.source, r['dimensions']['source'])
+            self.assertTrue(set(self.convert_dict_to_list(s.resource_metadata).
+                            items()).issubset(set(r['value_meta'].items())))
 
-            self.assertEqual(s.resource_metadata.items(),
-                             r['value_meta'].items())
+    def test_process_sample_metadata_with_extendedKey(self):
+        s = sample.Sample(
+            name='image',
+            type=sample.TYPE_CUMULATIVE,
+            unit='',
+            volume=1,
+            user_id='test',
+            project_id='test',
+            resource_id='test_run_tasks',
+            source='',
+            timestamp=datetime.datetime.utcnow().isoformat(),
+            resource_metadata={'event_type': 'notification',
+                               'status': 'active',
+                               'image_meta': {'base_url': 'http://image.url',
+                                              'base_url2': '',
+                                              'base_url3': None},
+                               'size': 0},
+            )
+
+        to_patch = ("ceilometer.publisher.monasca_data_filter."
+                    "MonascaDataFilter._get_mapping")
+        with mock.patch(to_patch, side_effect=[self._field_mappings]):
+            data_filter = mdf.MonascaDataFilter()
+            r = data_filter.process_sample_for_monasca(s)
+
+            self.assertEqual(s.name, r['name'])
+            self.assertIsNotNone(r.get('value_meta'))
+            self.assertTrue(set(self.convert_dict_to_list(s.resource_metadata).
+                            items()).issubset(set(r['value_meta'].items())))
+            self.assertEqual(r.get('value_meta')['image_meta.base_url'],
+                             s.resource_metadata.get('image_meta')
+                             ['base_url'])
+            self.assertEqual(r.get('value_meta')['image_meta.base_url2'],
+                             s.resource_metadata.get('image_meta')
+                             ['base_url2'])
+            self.assertEqual(r.get('value_meta')['image_meta.base_url3'],
+                             str(s.resource_metadata.get('image_meta')
+                             ['base_url3']))
+            self.assertEqual(r.get('value_meta')['image_meta.base_url4'],
+                             'None')

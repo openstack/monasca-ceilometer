@@ -13,18 +13,20 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from futurist import periodics
+
 import os
+import threading
 import time
 
 from oslo_config import cfg
 from oslo_log import log
-from oslo_service import loopingcall
 
 import ceilometer
 from ceilometer.i18n import _
 from ceilometer import monasca_client as mon_client
 from ceilometer import publisher
-from ceilometer.publisher import monasca_data_filter
+from ceilometer.publisher.monasca_data_filter import MonascaDataFilter
 
 from monascaclient import exc
 
@@ -89,21 +91,24 @@ class MonascaPublisher(publisher.PublisherBase):
         self.time_of_last_batch_run = time.time()
 
         self.mon_client = mon_client.Client(parsed_url)
-        self.mon_filter = monasca_data_filter.MonascaDataFilter()
+        self.mon_filter = MonascaDataFilter()
 
-        batch_timer = loopingcall.FixedIntervalLoopingCall(self.flush_batch)
-        batch_timer.start(interval=cfg.CONF.monasca.batch_polling_interval)
+        # add flush_batch function to periodic callables
+        periodic_callables = [
+            # The function to run + any automatically provided
+            # positional and keyword arguments to provide to it
+            # everytime it is activated.
+            (self.flush_batch, (), {}),
+        ]
 
         if cfg.CONF.monasca.retry_on_failure:
             # list to hold metrics to be re-tried (behaves like queue)
             self.retry_queue = []
             # list to store retry attempts for metrics in retry_queue
             self.retry_counter = []
-            retry_timer = loopingcall.FixedIntervalLoopingCall(
-                self.retry_batch)
-            retry_timer.start(
-                interval=cfg.CONF.monasca.retry_interval,
-                initial_delay=cfg.CONF.monasca.batch_polling_interval)
+
+            # add retry_batch function to periodic callables
+            periodic_callables.append((self.retry_batch, (), {}))
 
         if cfg.CONF.monasca.archive_on_failure:
             archive_path = cfg.CONF.monasca.archive_path
@@ -112,6 +117,13 @@ class MonascaPublisher(publisher.PublisherBase):
 
             self.archive_handler = publisher.get_publisher('file://' +
                                                            str(archive_path))
+
+        # start periodic worker
+        self.periodic_worker = periodics.PeriodicWorker(periodic_callables)
+        self.periodic_thread = threading.Thread(
+            target=self.periodic_worker.start)
+        self.periodic_thread.daemon = True
+        self.periodic_thread.start()
 
     def _publish_handler(self, func, metrics, batch=False):
         """Handles publishing and exceptions that arise."""
@@ -186,9 +198,10 @@ class MonascaPublisher(publisher.PublisherBase):
             else:
                 return False
 
+    @periodics.periodic(cfg.CONF.monasca.batch_polling_interval)
     def flush_batch(self):
         """Method to flush the queued metrics."""
-
+        # print "flush batch... %s" % str(time.time())
         if self.is_batch_ready():
             # publish all metrics in queue at this point
             batch_count = len(self.metric_queue)
@@ -212,9 +225,10 @@ class MonascaPublisher(publisher.PublisherBase):
         else:
             return False
 
+    @periodics.periodic(cfg.CONF.monasca.retry_interval)
     def retry_batch(self):
         """Method to retry the failed metrics."""
-
+        # print "retry batch...%s" % str(time.time())
         if self.is_retry_ready():
             retry_count = len(self.retry_queue)
 
@@ -255,6 +269,10 @@ class MonascaPublisher(publisher.PublisherBase):
                     # if retry failed, increment the retry counter
                     self.retry_counter[ctr] += 1
                     ctr += 1
+
+    def flush_to_file(self):
+        # TODO(persist maxed-out metrics to file)
+        pass
 
     def publish_events(self, events):
         """Send an event message for publishing
