@@ -102,8 +102,8 @@ class RpcEndpointMonitor(RpcEndpoint):
 
     def _monitor(self):
         threading.Timer(1.0, self._monitor).start()
-        print ("%d msg was received per second"
-               % (self._count - self._prev_count))
+        print("%d msg was received per second"
+              % (self._count - self._prev_count))
         self._prev_count = self._count
 
     def info(self, *args, **kwargs):
@@ -372,8 +372,8 @@ def main():
                         args.is_cast)
         time_ellapsed = (datetime.datetime.now() - start).total_seconds()
         msg_count = args.messages * args.threads
-        print ('%d messages was sent for %s seconds. Bandwight is %s msg/sec'
-               % (msg_count, time_ellapsed, (msg_count / time_ellapsed)))
+        print('%d messages was sent for %s seconds. Bandwight is %s msg/sec'
+              % (msg_count, time_ellapsed, (msg_count / time_ellapsed)))
         LOG.info("calls finished, wait %d seconds" % args.exit_wait)
         time.sleep(args.exit_wait)
 
