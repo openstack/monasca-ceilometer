@@ -1,15 +1,15 @@
 hacking<0.11,>=0.10.0
-git+https://github.com/openstack/ceilometer.git@stable/mitaka#egg=ceilometer
+git+https://github.com/openstack/ceilometer.git@stable/newton#egg=ceilometer
 mock>=1.2
 testrepository>=0.0.18
 testscenarios>=0.4
 testtools>=1.4.0
 oslosphinx>=2.5.0 # Apache-2.0
 oslotest>=1.10.0 # Apache-2.0
-oslo.vmware>=1.16.0 # Apache-2.0
+oslo.vmware>=1.16.0,<2.17.0 # Apache-2.0
 # Use lower versions of config and utils since
 # Keystone client depends on it
 oslo.config>=2.3.0 # Apache-2.0
 oslo.utils!=2.6.0,>=2.0.0 # Apache-2.0
 oslo.log>=1.8.0 # Apache-2.0
-python-monascaclient
+python-monascaclient<=1.2.0

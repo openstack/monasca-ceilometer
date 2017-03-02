@@ -1,0 +1,24 @@
+---
+
+meter_metric_map:
+  - name: "network.outgoing.rate"
+    monasca_metric_name: "vm.net.out_rate"
+    resource_id: $.dimensions.resource_id
+    project_id: $.dimensions.project_id
+    user_id: $.dimensions.user_id
+    region: "NA"
+    type: "gauge"
+    unit: "b/s"
+    source: "NA"
+    resource_metadata: $.measurement[0][2]
+
+  - name: "network.incoming.rate"
+    monasca_metric_name: "vm.net.in_rate"
+    resource_id: $.dimensions.resource_id
+    project_id: $.dimensions.project_id
+    user_id: $.dimensions.user_id
+    region: "NA"
+    type: "gauge"
+    unit: "b/s"
+    source: "NA"
+    resource_metadata: $.measurement[0][2]

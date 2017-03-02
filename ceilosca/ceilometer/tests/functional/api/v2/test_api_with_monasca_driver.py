@@ -84,7 +84,7 @@ class TestApi(test_base.BaseTestCase):
         self.CONF.import_opt('pipeline_cfg_file', 'ceilometer.pipeline')
         self.CONF.set_override(
             'pipeline_cfg_file',
-            self.path_get('etc/ceilometer/pipeline.yaml')
+            self.path_get('etc/ceilometer/monasca_pipeline.yaml')
         )
 
         self.CONF.import_opt('monasca_mappings',
@@ -147,6 +147,7 @@ class TestApi(test_base.BaseTestCase):
         :param override_params: literally encoded query param string
         :param params: content for wsgi.input of request
         """
+
         q = q or []
         groupby = groupby or []
         full_path = self.PATH_PREFIX + path
@@ -211,7 +212,8 @@ class TestListMeters(TestApi):
 
         data = self.get_json('/meters')
         self.assertEqual(True, mnl_mock.called)
-        self.assertEqual(1, mnl_mock.call_count)
+        self.assertEqual(2, mnl_mock.call_count,
+                         "impl_monasca.py calls the metrics_list api twice.")
         self.assertEqual(2, len(data))
 
         (self.assertIn(meter['name'],
@@ -219,6 +221,17 @@ class TestListMeters(TestApi):
                         self.meter_payload]) for meter in data)
 
     def test_get_meters_query_with_project_resource(self):
+        """Test meter name conversion for project-id and resource-id.
+
+        Previous versions of the monasca client did not do this conversion.
+
+        Pre-Newton expected:
+        'dimensions': {'project_id': u'project-1','resource_id': u'resource-1'}
+
+        Newton expected:
+        'dimensions': {'hostname': u'resource-1','project_id': u'project-1'}
+        """
+
         mnl_mock = self.mock_mon_client().metrics_list
         mnl_mock.return_value = self.meter_payload
 
@@ -228,10 +241,11 @@ class TestListMeters(TestApi):
                          {'field': 'project_id',
                           'value': 'project-1'}])
         self.assertEqual(True, mnl_mock.called)
-        self.assertEqual(1, mnl_mock.call_count)
-        self.assertEqual(dict(dimensions=dict(resource_id=u'resource-1',
-                                              project_id=u'project-1'),
-                              limit=100),
+        self.assertEqual(4, mnl_mock.call_count,
+                         "impl_monasca.py expected to make 4 calls to mock.")
+        # Note - previous versions of the api included a limit value
+        self.assertEqual(dict(dimensions=dict(hostname=u'resource-1',
+                                              project_id=u'project-1')),
                          mnl_mock.call_args[1])
 
     def test_get_meters_query_with_user(self):
@@ -242,7 +256,13 @@ class TestListMeters(TestApi):
                       q=[{'field': 'user_id',
                           'value': 'user-1'}])
         self.assertEqual(True, mnl_mock.called)
-        self.assertEqual(1, mnl_mock.call_count)
-        self.assertEqual(dict(dimensions=dict(user_id=u'user-1'),
-                              limit=100),
+        self.assertEqual(2, mnl_mock.call_count,
+                         "impl_monasca.py calls the metrics_list api twice.")
+        # Note - previous versions of the api included a limit value
+        self.assertEqual(dict(dimensions=dict(user_id=u'user-1')),
                          mnl_mock.call_args[1])
+
+    # TODO(joadavis) Test a bad query parameter
+    #   Like using 'hostname' instead of 'resource_id'
+    #   Expected result with bad parameter:
+    # webtest.app.AppError: Bad response: 400 Bad Request

@@ -34,6 +34,11 @@ ceilosca_files = {
 for src, dest in ceilosca_files.items():
     shutil.copyfile(src, dest)
 
+# Include new module
+shutil.rmtree(ceilo_dir + "/ceilosca_mapping/", True)
+shutil.copytree('ceilosca/ceilometer/ceilosca_mapping',
+                ceilo_dir + "/ceilosca_mapping/")
+
 ceilo_parent_dir = os.path.dirname(os.path.abspath(
     os.path.dirname(ceilometer.__file__)))
 
@@ -43,6 +48,7 @@ ceilosca_conf_files = {
     [
         'etc/ceilometer/monasca_field_definitions.yaml',
         'etc/ceilometer/pipeline.yaml',
+        'etc/ceilometer/monasca_pipeline.yaml',
         'etc/ceilometer/ceilometer.conf',
         'etc/ceilometer/policy.json'
     ]

@@ -3,7 +3,8 @@ sources:
     - name: meter_source
       interval: 60
       meters:
-          - "instance"
+          - "testbatch"
+          - "testbatch2"
       sinks:
           - meter_sink
 sinks:

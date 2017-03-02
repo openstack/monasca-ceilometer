@@ -27,8 +27,20 @@ OPTS = [
                default='/etc/ceilometer/monasca_field_definitions.yaml',
                help='Monasca static and dynamic field mappings'),
 ]
-
 cfg.CONF.register_opts(OPTS, group='monasca')
+
+MULTI_REGION_OPTS = [
+    cfg.StrOpt('control_plane',
+               default='None',
+               help='The name of control plane'),
+    cfg.StrOpt('cluster',
+               default='None',
+               help='The name of cluster'),
+    cfg.StrOpt('cloud_name',
+               default='None',
+               help='The name of cloud')
+]
+cfg.CONF.register_opts(MULTI_REGION_OPTS)
 
 LOG = log.getLogger(__name__)
 
@@ -75,11 +87,26 @@ class MonascaDataFilter(object):
             resource_metadata=s['resource_metadata'],
             source=s.get('source')).as_dict()
 
+    def get_value_for_nested_dictionary(self, lst, dct):
+        val = dct
+        for element in lst:
+            if isinstance(val, dict) and element in val:
+                val = val.get(element)
+            else:
+                return
+        return val
+
     def process_sample_for_monasca(self, sample_obj):
         if not self._mapping:
             raise NoMappingsFound("Unable to process the sample")
 
         dimensions = {}
+        dimensions['datasource'] = 'ceilometer'
+        # control_plane, cluster and cloud_name can be None, but we use
+        # literal 'None' for such case
+        dimensions['control_plane'] = cfg.CONF.control_plane or 'None'
+        dimensions['cluster'] = cfg.CONF.cluster or 'None'
+        dimensions['cloud_name'] = cfg.CONF.cloud_name or 'None'
         if isinstance(sample_obj, sample_util.Sample):
             sample = sample_obj.as_dict()
         elif isinstance(sample_obj, dict):
@@ -88,26 +115,48 @@ class MonascaDataFilter(object):
             else:
                 sample = sample_obj
 
+        sample_meta = sample.get('resource_metadata', None)
+
         for dim in self._mapping['dimensions']:
             val = sample.get(dim, None)
-            if val:
+            if val is not None:
                 dimensions[dim] = val
+            else:
+                dimensions[dim] = 'None'
 
-        sample_meta = sample.get('resource_metadata', None)
         value_meta = {}
-
         meter_name = sample.get('name') or sample.get('counter_name')
         if sample_meta:
             for meta_key in self._mapping['metadata']['common']:
                 val = sample_meta.get(meta_key, None)
-                if val:
-                    value_meta[meta_key] = str(val)
+                if val is not None:
+                    value_meta[meta_key] = val
+                else:
+                    if len(meta_key.split('.')) > 1:
+                        val = self.get_value_for_nested_dictionary(
+                            meta_key.split('.'), sample_meta)
+                        if val is not None:
+                            value_meta[meta_key] = val
+                        else:
+                            value_meta[meta_key] = 'None'
+                    else:
+                        value_meta[meta_key] = 'None'
 
             if meter_name in self._mapping['metadata'].keys():
                 for meta_key in self._mapping['metadata'][meter_name]:
                     val = sample_meta.get(meta_key, None)
-                    if val:
-                        value_meta[meta_key] = str(val)
+                    if val is not None:
+                        value_meta[meta_key] = val
+                    else:
+                        if len(meta_key.split('.')) > 1:
+                            val = self.get_value_for_nested_dictionary(
+                                meta_key.split('.'), sample_meta)
+                            if val is not None:
+                                value_meta[meta_key] = val
+                            else:
+                                value_meta[meta_key] = 'None'
+                        else:
+                            value_meta[meta_key] = 'None'
 
         meter_value = sample.get('volume') or sample.get('counter_volume')
         if meter_value is None:
