@@ -15,12 +15,12 @@
 """Test api with Monasca driver
 """
 
+import fixtures
 import mock
 import pkg_resources
 
 from oslo_config import cfg
 from oslo_config import fixture as fixture_config
-from oslotest import mockpatch
 from stevedore import driver
 from stevedore import extension
 
@@ -109,7 +109,7 @@ class TestApi(test_base.BaseTestCase):
             self.conn = storage.get_connection('monasca://127.0.0.1:8080',
                                                'ceilometer.metering.storage')
 
-            self.useFixture(mockpatch.Patch(
+            self.useFixture(fixtures.MockPatch(
                 'ceilometer.storage.get_connection',
                 return_value=self.conn))
 
