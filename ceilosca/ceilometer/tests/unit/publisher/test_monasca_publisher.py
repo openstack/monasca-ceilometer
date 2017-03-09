@@ -16,6 +16,7 @@
 """
 
 import datetime
+import fixtures
 import os
 import time
 
@@ -25,7 +26,6 @@ from oslo_config import cfg
 from oslo_config import fixture as fixture_config
 from oslo_utils import fileutils
 from oslotest import base
-from oslotest import mockpatch
 
 from ceilometer import monasca_client as mon_client
 from ceilometer.publisher import monclient
@@ -203,7 +203,7 @@ class TestMonascaPublisher(base.BaseTestCase):
         self.CONF.set_override('batch_mode', False, group='monasca')
         self.fake_publisher = mock.Mock()
 
-        self.useFixture(mockpatch.Patch(
+        self.useFixture(fixtures.MockPatch(
             'ceilometer.publisher.file.FilePublisher',
             return_value=self.fake_publisher))
 
