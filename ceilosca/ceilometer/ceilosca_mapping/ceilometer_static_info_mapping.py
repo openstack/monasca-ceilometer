@@ -23,7 +23,7 @@ import yaml
 from oslo_config import cfg
 from oslo_log import log
 
-from ceilometer.i18n import _LE, _LW
+
 from ceilometer import sample
 
 LOG = log.getLogger(__name__)
@@ -59,12 +59,12 @@ class CeilometerStaticMappingDefinition(object):
                    if not self.cfg.get(field)]
         if missing:
             raise CeilometerStaticMappingDefinitionException(
-                _LE("Required fields %s not specified") % missing, self.cfg)
+                "Required fields %s not specified" % missing, self.cfg)
 
         if ('type' not in self.cfg.get('lookup', []) and
                 self.cfg['type'] not in sample.TYPES):
             raise CeilometerStaticMappingDefinitionException(
-                _LE("Invalid type %s specified") % self.cfg['type'], self.cfg)
+                "Invalid type %s specified" % self.cfg['type'], self.cfg)
 
 
 def get_config_file():
@@ -92,15 +92,15 @@ def setup_ceilometer_static_mapping_config():
         except yaml.YAMLError as err:
             if hasattr(err, 'problem_mark'):
                 mark = err.problem_mark
-                errmsg = (_LE("Invalid YAML syntax in static Ceilometer "
-                              "Mapping Definitions file %(file)s at line: "
-                              "%(line)s, column: %(column)s.")
+                errmsg = ("Invalid YAML syntax in static Ceilometer "
+                          "Mapping Definitions file %(file)s at line: "
+                          "%(line)s, column: %(column)s."
                           % dict(file=config_file,
                                  line=mark.line + 1,
                                  column=mark.column + 1))
             else:
-                errmsg = (_LE("YAML error reading static Ceilometer Mapping "
-                              "Definitions file %(file)s") %
+                errmsg = ("YAML error reading static Ceilometer Mapping "
+                          "Definitions file %(file)s" %
                           dict(file=config_file))
 
             LOG.error(errmsg)
@@ -124,16 +124,16 @@ def load_definitions(config_def):
     for meter_info_static_map in reversed(config_def['meter_info_static_map']):
         if meter_info_static_map.get('name') in ceilometer_static_mapping_defs:
             # skip duplicate meters
-            LOG.warning(_LW("Skipping duplicate Ceilometer Monasca Mapping"
-                            " Definition %s") % meter_info_static_map)
+            LOG.warning("Skipping duplicate Ceilometer Monasca Mapping"
+                        " Definition %s" % meter_info_static_map)
             continue
 
         try:
             md = CeilometerStaticMappingDefinition(meter_info_static_map)
             ceilometer_static_mapping_defs[meter_info_static_map['name']] = md
         except CeilometerStaticMappingDefinitionException as me:
-            errmsg = (_LE("Error loading Ceilometer Static Mapping "
-                          "Definition : %(err)s") % dict(err=me.message))
+            errmsg = ("Error loading Ceilometer Static Mapping "
+                      "Definition : %(err)s" % dict(err=me.message))
             LOG.error(errmsg)
     return ceilometer_static_mapping_defs.values()
 

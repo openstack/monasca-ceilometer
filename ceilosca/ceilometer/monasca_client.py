@@ -21,7 +21,7 @@ from oslo_config import cfg
 from oslo_log import log
 import retrying
 
-from ceilometer.i18n import _, _LW
+from ceilometer.i18n import _
 from ceilometer import keystone_client
 
 
@@ -78,7 +78,7 @@ class Client(object):
         # NOTE(zqfan): There are many concurrency requests while using
         # Ceilosca, to save system resource, we don't retry too many times.
         if self._max_retries < 0 or self._max_retries > 10:
-            LOG.warning(_LW('Reduce max retries from %s to 10'),
+            LOG.warning('Reduce max retries from %s to 10',
                         self._max_retries)
             self._max_retries = 10
         conf = cfg.CONF.service_credentials

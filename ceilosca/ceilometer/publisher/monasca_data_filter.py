@@ -19,7 +19,7 @@ from oslo_log import log
 from oslo_utils import timeutils
 import yaml
 
-from ceilometer.i18n import _LI
+
 from ceilometer import sample as sample_util
 
 OPTS = [
@@ -170,9 +170,9 @@ class MonascaDataFilter(object):
             value_meta=value_meta,
         )
 
-        LOG.debug(_LI("Generated metric with name %(name)s,"
-                      " timestamp %(timestamp)s, value %(value)s,"
-                      " dimensions %(dimensions)s") %
+        LOG.debug("Generated metric with name %(name)s,"
+                  " timestamp %(timestamp)s, value %(value)s,"
+                  " dimensions %(dimensions)s" %
                   {'name': metric['name'],
                    'timestamp': metric['timestamp'],
                    'value': metric['value'],

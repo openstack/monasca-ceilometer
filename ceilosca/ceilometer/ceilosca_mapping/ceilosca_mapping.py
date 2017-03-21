@@ -26,7 +26,7 @@ from jsonpath_rw_ext import parser
 from oslo_config import cfg
 from oslo_log import log
 
-from ceilometer.i18n import _LE, _LW
+
 from ceilometer import pipeline
 from ceilometer import sample
 
@@ -66,7 +66,7 @@ class CeiloscaMappingDefinition(object):
                    if not self.cfg.get(field)]
         if missing:
             raise CeiloscaMappingDefinitionException(
-                _LE("Required fields %s not specified") % missing, self.cfg)
+                "Required fields %s not specified" % missing, self.cfg)
 
         self._monasca_metric_name = self.cfg.get('monasca_metric_name')
         if isinstance(self._monasca_metric_name, six.string_types):
@@ -75,7 +75,7 @@ class CeiloscaMappingDefinition(object):
         if ('type' not in self.cfg.get('lookup', []) and
                 self.cfg['type'] not in sample.TYPES):
             raise CeiloscaMappingDefinitionException(
-                _LE("Invalid type %s specified") % self.cfg['type'], self.cfg)
+                "Invalid type %s specified" % self.cfg['type'], self.cfg)
 
         self._field_getter = {}
         for name, field in self.cfg.items():
@@ -102,9 +102,9 @@ class CeiloscaMappingDefinition(object):
         try:
             parts = self.JSONPATH_RW_PARSER.parse(field)
         except Exception as e:
-            raise CeiloscaMappingDefinitionException(_LE(
+            raise CeiloscaMappingDefinitionException(
                 "Parse error in JSONPath specification "
-                "'%(jsonpath)s': %(err)s")
+                "'%(jsonpath)s': %(err)s"
                 % dict(jsonpath=field, err=e), self.cfg)
         return parts
 
@@ -157,15 +157,15 @@ def setup_ceilosca_mapping_config():
         except yaml.YAMLError as err:
             if hasattr(err, 'problem_mark'):
                 mark = err.problem_mark
-                errmsg = (_LE("Invalid YAML syntax in Ceilometer Monasca "
-                              "Mapping Definitions file %(file)s at line: "
-                              "%(line)s, column: %(column)s.")
+                errmsg = ("Invalid YAML syntax in Ceilometer Monasca "
+                          "Mapping Definitions file %(file)s at line: "
+                          "%(line)s, column: %(column)s."
                           % dict(file=config_file,
                                  line=mark.line + 1,
                                  column=mark.column + 1))
             else:
-                errmsg = (_LE("YAML error reading Ceilometer Monasca Mapping "
-                              "Definitions file %(file)s") %
+                errmsg = ("YAML error reading Ceilometer Monasca Mapping "
+                          "Definitions file %(file)s" %
                           dict(file=config_file))
 
             LOG.error(errmsg)
@@ -189,16 +189,16 @@ def load_definitions(config_def):
     for meter_metric_map in reversed(config_def['meter_metric_map']):
         if meter_metric_map.get('name') in ceilosca_mapping_defs:
             # skip duplicate meters
-            LOG.warning(_LW("Skipping duplicate Ceilometer Monasca Mapping"
-                            " Definition %s") % meter_metric_map)
+            LOG.warning("Skipping duplicate Ceilometer Monasca Mapping"
+                        " Definition %s" % meter_metric_map)
             continue
 
         try:
             md = CeiloscaMappingDefinition(meter_metric_map)
             ceilosca_mapping_defs[meter_metric_map['name']] = md
         except CeiloscaMappingDefinitionException as me:
-            errmsg = (_LE("Error loading Ceilometer Monasca Mapping "
-                          "Definition : %(err)s") % dict(err=me.message))
+            errmsg = ("Error loading Ceilometer Monasca Mapping "
+                      "Definition : %(err)s" % dict(err=me.message))
             LOG.error(errmsg)
     return ceilosca_mapping_defs.values()
 
