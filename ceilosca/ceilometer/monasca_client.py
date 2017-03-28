@@ -73,7 +73,7 @@ class Client(object):
     def __init__(self, parsed_url):
         self._retry_interval = cfg.CONF.database.retry_interval * 1000
         self._max_retries = cfg.CONF.database.max_retries or 1
-        # nable monasca api pagination
+        # enable monasca api pagination
         self._enable_api_pagination = cfg.CONF.monasca.enable_api_pagination
         # NOTE(zqfan): There are many concurrency requests while using
         # Ceilosca, to save system resource, we don't retry too many times.
@@ -176,16 +176,16 @@ class Client(object):
         """
         search_args = copy.deepcopy(kwargs)
         metrics = self.call_func(self._mon_client.metrics.list, **search_args)
-        # check of api pagination is enabled
+        # check if api pagination is enabled
         if self._enable_api_pagination:
             # page through monasca results
             while metrics:
                 for metric in metrics:
                     yield metric
-                    # offset for metircs is the last metric's id
-                    search_args['offset'] = metric['id']
-                    metrics = self.call_func(self._mon_client.metrics.list,
-                                             **search_args)
+                # offset for metrics is the last metric's id
+                search_args['offset'] = metric['id']
+                metrics = self.call_func(self._mon_client.metrics.list,
+                                         **search_args)
         else:
             for metric in metrics:
                 yield metric
@@ -204,18 +204,18 @@ class Client(object):
         measurements = self.call_func(
             self._mon_client.metrics.list_measurements,
             **search_args)
-        # check of api pagination is enabled
+        # check if api pagination is enabled
         if self._enable_api_pagination:
             while measurements:
                 for measurement in measurements:
                     yield measurement
-                    # offset for measurements is measurement id composited with
-                    # the last measurement's timestamp
-                    search_args['offset'] = '%s_%s' % (
-                        measurement['id'], measurement['measurements'][-1][0])
-                    measurements = self.call_func(
-                        self._mon_client.metrics.list_measurements,
-                        **search_args)
+                # offset for measurements is measurement id composited with
+                # the last measurement's timestamp
+                search_args['offset'] = '%s_%s' % (
+                    measurement['id'], measurement['measurements'][-1][0])
+                measurements = self.call_func(
+                    self._mon_client.metrics.list_measurements,
+                    **search_args)
         else:
             for measurement in measurements:
                 yield measurement
@@ -229,31 +229,31 @@ class Client(object):
         search_args = copy.deepcopy(kwargs)
         statistics = self.call_func(self._mon_client.metrics.list_statistics,
                                     **search_args)
-        # check of api pagination is enabled
+        # check if api pagination is enabled
         if self._enable_api_pagination:
             while statistics:
                 for statistic in statistics:
                     yield statistic
-                    # with groupby, the offset is unpredictable to me, we don't
-                    # support pagination for it now.
-                    if kwargs.get('group_by'):
-                        break
-                    # offset for statistics is statistic id composited with
-                    # the last statistic's timestamp
-                    search_args['offset'] = '%s_%s' % (
-                        statistic['id'], statistic['statistics'][-1][0])
-                    statistics = self.call_func(
-                        self._mon_client.metrics.list_statistics,
-                        **search_args)
-                    # unlike metrics.list and metrics.list_measurements
-                    # return whole new data, metrics.list_statistics
-                    # next page will use last page's final statistic
-                    # data as the first one, so we need to pop it here.
-                    # I think Monasca should treat this as a bug and fix it.
-                    if statistics:
-                        statistics[0]['statistics'].pop(0)
-                        if len(statistics[0]['statistics']) == 0:
-                            statistics.pop(0)
+                # with groupby, the offset is unpredictable to me, we don't
+                # support pagination for it now.
+                if kwargs.get('group_by'):
+                    break
+                # offset for statistics is statistic id composited with
+                # the last statistic's timestamp
+                search_args['offset'] = '%s_%s' % (
+                    statistic['id'], statistic['statistics'][-1][0])
+                statistics = self.call_func(
+                    self._mon_client.metrics.list_statistics,
+                    **search_args)
+                # unlike metrics.list and metrics.list_measurements
+                # return whole new data, metrics.list_statistics
+                # next page will use last page's final statistic
+                # data as the first one, so we need to pop it here.
+                # I think Monasca should treat this as a bug and fix it.
+                if statistics:
+                    statistics[0]['statistics'].pop(0)
+                    if len(statistics[0]['statistics']) == 0:
+                        statistics.pop(0)
         else:
             for statistic in statistics:
                 yield statistic
