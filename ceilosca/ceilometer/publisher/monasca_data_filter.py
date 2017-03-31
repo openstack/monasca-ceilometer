@@ -14,12 +14,15 @@
 # under the License.
 
 import datetime
+
+from jsonpath_rw_ext import parser
 from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import timeutils
 import yaml
 
-
+from ceilometer.ceilosca_mapping.ceilosca_mapping import (
+    CeiloscaMappingDefinitionException)
 from ceilometer import sample as sample_util
 
 OPTS = [
@@ -27,6 +30,7 @@ OPTS = [
                default='/etc/ceilometer/monasca_field_definitions.yaml',
                help='Monasca static and dynamic field mappings'),
 ]
+
 cfg.CONF.register_opts(OPTS, group='monasca')
 
 MULTI_REGION_OPTS = [
@@ -54,6 +58,8 @@ class NoMappingsFound(Exception):
 
 
 class MonascaDataFilter(object):
+    JSONPATH_RW_PARSER = parser.ExtentedJsonPathParser()
+
     def __init__(self):
         self._mapping = {}
         self._mapping = self._get_mapping()
@@ -62,8 +68,21 @@ class MonascaDataFilter(object):
         with open(cfg.CONF.monasca.monasca_mappings, 'r') as f:
             try:
                 return yaml.safe_load(f)
-            except yaml.YAMLError as exc:
-                raise UnableToLoadMappings(exc.message)
+            except yaml.YAMLError as err:
+                if hasattr(err, 'problem_mark'):
+                    mark = err.problem_mark
+                    errmsg = ("Invalid YAML syntax in Monasca Data "
+                              "Filter file %(file)s at line: "
+                              "%(line)s, column: %(column)s."
+                              % dict(file=cfg.CONF.monasca.monasca_mappings,
+                                     line=mark.line + 1,
+                                     column=mark.column + 1))
+                else:
+                    errmsg = ("YAML error reading Monasca Data Filter "
+                              "file %(file)s" %
+                              dict(file=cfg.CONF.monasca.monasca_mappings))
+                LOG.error(errmsg)
+                raise UnableToLoadMappings(err.message)
 
     def _convert_timestamp(self, timestamp):
         if isinstance(timestamp, datetime.datetime):
@@ -96,6 +115,64 @@ class MonascaDataFilter(object):
                 return
         return val
 
+    def parse_jsonpath(self, field):
+        try:
+            parts = self.JSONPATH_RW_PARSER.parse(field)
+        except Exception as e:
+            raise CeiloscaMappingDefinitionException(
+                "Parse error in JSONPath specification "
+                "'%(jsonpath)s': %(err)s"
+                % dict(jsonpath=field, err=e))
+        return parts
+
+    def _get_value_metadata_for_key(self, sample_meta, meta_key):
+        """Get the data for the given key, supporting JSONPath"""
+        if isinstance(meta_key, dict):
+            # extract key and jsonpath
+            # If following convention, dict will have one and only one
+            # element of the form <monasca key>: <json path>
+            if len(meta_key.keys()) == 1:
+                mon_key = meta_key.keys()[0]
+            else:
+                # If no keys or more keys than one
+                raise CeiloscaMappingDefinitionException(
+                    "Field definition format mismatch, should "
+                    "have only one key:value pair. %(meta_key)s" %
+                    {'meta_key': meta_key}, meta_key)
+            json_path = meta_key[mon_key]
+            parts = self.parse_jsonpath(json_path)
+            val_matches = parts.find(sample_meta)
+            if len(val_matches) > 0:
+                # resolve the find to the first match and get value
+                val = val_matches[0].value
+                if not isinstance(val, str) and not isinstance(val, int):
+                    # Don't support lists or dicts or ...
+                    raise CeiloscaMappingDefinitionException(
+                        "Metadata format mismatch, value "
+                        "should be a simple string. %(valuev)s" %
+                        {'valuev': val}, meta_key)
+            else:
+                val = 'None'
+            return mon_key, val
+        else:
+            # simple string
+            val = sample_meta.get(meta_key, None)
+            if val is not None:
+                return meta_key, val
+            else:
+                # one more attempt using a dotted notation
+                # TODO(joadavis) Deprecate this . notation code
+                # in favor of jsonpath
+                if len(meta_key.split('.')) > 1:
+                    val = self.get_value_for_nested_dictionary(
+                        meta_key.split('.'), sample_meta)
+                    if val is not None:
+                        return meta_key, val
+                    else:
+                        return meta_key, 'None'
+                else:
+                    return meta_key, 'None'
+
     def process_sample_for_monasca(self, sample_obj):
         if not self._mapping:
             raise NoMappingsFound("Unable to process the sample")
@@ -115,48 +192,28 @@ class MonascaDataFilter(object):
             else:
                 sample = sample_obj
 
-        sample_meta = sample.get('resource_metadata', None)
-
         for dim in self._mapping['dimensions']:
             val = sample.get(dim, None)
-            if val is not None:
+            if val:
                 dimensions[dim] = val
             else:
                 dimensions[dim] = 'None'
 
+        sample_meta = sample.get('resource_metadata', None)
         value_meta = {}
+
         meter_name = sample.get('name') or sample.get('counter_name')
         if sample_meta:
             for meta_key in self._mapping['metadata']['common']:
-                val = sample_meta.get(meta_key, None)
-                if val is not None:
-                    value_meta[meta_key] = val
-                else:
-                    if len(meta_key.split('.')) > 1:
-                        val = self.get_value_for_nested_dictionary(
-                            meta_key.split('.'), sample_meta)
-                        if val is not None:
-                            value_meta[meta_key] = val
-                        else:
-                            value_meta[meta_key] = 'None'
-                    else:
-                        value_meta[meta_key] = 'None'
+                monasca_key, val = self._get_value_metadata_for_key(
+                    sample_meta, meta_key)
+                value_meta[monasca_key] = val
 
             if meter_name in self._mapping['metadata'].keys():
                 for meta_key in self._mapping['metadata'][meter_name]:
-                    val = sample_meta.get(meta_key, None)
-                    if val is not None:
-                        value_meta[meta_key] = val
-                    else:
-                        if len(meta_key.split('.')) > 1:
-                            val = self.get_value_for_nested_dictionary(
-                                meta_key.split('.'), sample_meta)
-                            if val is not None:
-                                value_meta[meta_key] = val
-                            else:
-                                value_meta[meta_key] = 'None'
-                        else:
-                            value_meta[meta_key] = 'None'
+                    monasca_key, val = self._get_value_metadata_for_key(
+                        sample_meta, meta_key)
+                    value_meta[monasca_key] = val
 
         meter_value = sample.get('volume') or sample.get('counter_volume')
         if meter_value is None:
