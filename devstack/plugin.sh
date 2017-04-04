@@ -26,9 +26,15 @@ function configure_ceilosca {
 
     iniset $CEILOMETER_CONF database metering_connection monasca://$MONASCA_API_URL
     iniset $CEILOMETER_CONF notification workers $API_WORKERS
+    # disable, otherwise Ceilosca won't process and store event data
+    iniset $CEILOMETER_CONF notification disable_non_metric_meters False
 }
 
 function preinstall_ceilosca {
+    # create new directory
+    cp -r $CEILOSCA_DIR/ceilosca/ceilometer/ceilosca_mapping $CEILOMETER_DIR/ceilometer/
+
+    # overlay files into existing dirs
     for ceilosca_file in $CEILOSCA_FILES
     do
         # source file and dest file names are separated with :
