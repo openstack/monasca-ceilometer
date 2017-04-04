@@ -1,21 +1,18 @@
-# Setting up ceilosca solution
+# Installing Ceilosca using automated methods
 
-Setup ceilosca solution with following steps
+There are a few options for configuring Ceilosca on top of a Ceilometer and Monasca deployment.
 
-- wget https://raw.githubusercontent.com/openstack/monasca-ceilometer/master/devstack/ceilosca.sh
-- chmod +x ceilosca.sh
-  - (Optional) check ceilosca.sh to tweak and modify if you require any changes from default behaviour
-- ./ceilosca.sh
+Choose one:
+- DevStack can be instructed through the local.conf to "enable ceilosca".  Reference the included devstack/sample-local.conf for one configuration.
 
-# Few things to take note
+- Use the included Vagrantfile to create and provision a VM.
 
-- The user running the script should be part of sudoers with no password
-- Like devstack this setup adds the packages and modifies at system level
+- Under certain conditions the monasca_test_setup.py may be used to set up Ceilosca for testing.  This .py may also be useful reference if you choose to write your own integration scripts.
 
-# What's missing
-
-Horizon isn't being setup since it is causing issue which require further investigation
-
-# Vagrant approved!
-
-Use the provided Vagrantfile to create and provision a VM.
+- (Deprecated) the devstack/ceilosca.sh script will copy Ceilosca components on top of Ceilometer.
+  - ceilosca.sh is left as reference, but has not been updated for the Newton release.
+  - The script should be tweaked before execution, particularly the lines.
+    - export SERVICE_HOST=192.168.10.6
+    - export HOST_IP_IFACE=eth0
+  - The script was run by a sudoers user with no password.
+  - And did not configure Horizon
