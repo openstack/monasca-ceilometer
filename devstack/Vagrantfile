@@ -26,7 +26,7 @@ Vagrant.configure(2) do |config|
   end
 
   config.vm.hostname = "devstack"
-  config.vm.box = "ubuntu/trusty64"
+  config.vm.box = "bento/ubuntu-16.04"
   # config.vm.box_check_update = false
   config.vm.network "private_network",ip:"192.168.10.6"
   config.vm.synced_folder "~/", "/vagrant_home"
@@ -36,6 +36,8 @@ Vagrant.configure(2) do |config|
     vb.memory = "12800"
     vb.cpus = 4
     # vb.customize ["modifyvm", :id, "--cpuexecutioncap", "50"]
+    # bento box bug workaround - https://github.com/chef/bendo/issues/688
+    vb.customize ["modifyvm", :id, "--cableconnected1", "on"]
   end
 
   config.vm.provision "shell", privileged: false, path: "ceilosca.sh"
