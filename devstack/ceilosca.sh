@@ -4,9 +4,11 @@
 cd $HOME
 
 #Essentials
-sudo apt-get update
-sudo apt-get -y upgrade
+# Note - Vagrant bento box chokes on update/upgrade, so just use a current build instead
+# sudo apt-get update
+# sudo apt-get -y upgrade
 sudo apt-get -y install git
+
 wget https://bootstrap.pypa.io/get-pip.py
 sudo python get-pip.py
 sudo apt-get -y install python-dev
@@ -37,10 +39,10 @@ if [ $http_proxy ]; then
   sudo cp ./maven_proxy_settings.xml /root/.m2/settings.xml
 fi
 
-#Clone devstack and switch to mitaka
+#Clone devstack and switch to newton
 git clone https://git.openstack.org/openstack-dev/devstack | true
 cd devstack
-git checkout stable/mitaka
+git checkout stable/newton
 
 #Add hard coded IP to the default interface
 ##NOTE: Change the interface if your system is different net_if
@@ -49,6 +51,7 @@ export HOST_IP_IFACE=eth0
 sudo ip addr add $SERVICE_HOST/24 dev $HOST_IP_IFACE || true
 
 #local.conf for devstack
+#NOTE: setting other services to versions compatible with newton and later Ceilosca
 echo '[[local|localrc]]
 SERVICE_HOST=$SERVICE_HOST
 HOST_IP=$SERVICE_HOST
@@ -65,6 +68,10 @@ LOGDIR=$DEST/logs
 LOG_COLOR=False
 disable_service ceilometer-alarm-notifier ceilometer-alarm-evaluator
 disable_service ceilometer-collector
+disable_service monasca-thresh
+# The following must be disabled as the test does not work at this point
+# See https://bugs.launchpad.net/monasca/+bug/1636508
+disable_service monasca-smoke-test
 enable_service rabbit mysql key tempest
 # The following two variables allow switching between Java and Python for the implementations
 # of the Monasca API and the Monasca Persister. If these variables are not set, then the
@@ -76,9 +83,11 @@ MONASCA_API_IMPLEMENTATION_LANG=${MONASCA_API_IMPLEMENTATION_LANG:-python}
 #MONASCA_PERSISTER_IMPLEMENTATION_LANG=${MONASCA_PERSISTER_IMPLEMENTATION_LANG:-java}
 MONASCA_PERSISTER_IMPLEMENTATION_LANG=${MONASCA_PERSISTER_IMPLEMENTATION_LANG:-python}
 # This line will enable all of Monasca.
-enable_plugin monasca-api https://git.openstack.org/openstack/monasca-api
-enable_plugin ceilometer https://git.openstack.org/openstack/ceilometer
-enable_plugin ceilosca https://github.com/openstack/monasca-ceilometer
+enable_plugin monasca-api https://git.openstack.org/openstack/monasca-api stable/newton
+enable_plugin ceilometer https://git.openstack.org/openstack/ceilometer stable/newton
+enable_plugin ceilosca https://github.com/openstack/monasca-ceilometer master
+# Optional
+#enable_plugin monasca-transform https://git.openstack.org/openstack/monasca-transform master
 ' > local.conf
 
 #Run the stack.sh

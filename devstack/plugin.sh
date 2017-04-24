@@ -26,8 +26,17 @@ function configure_ceilosca {
 
     iniset $CEILOMETER_CONF database metering_connection monasca://$MONASCA_API_URL
     iniset $CEILOMETER_CONF notification workers $API_WORKERS
-    # disable, otherwise Ceilosca won't process and store event data
+    iniset $CEILOMETER_CONF notifications workload_partitioning False
+    # Disable, otherwise Ceilosca won't process and store event data
     iniset $CEILOMETER_CONF notification disable_non_metric_meters False
+
+    # Workaround: Client has a problem with the /identity auth url only in service_credentials
+    auth_url=$(iniget $CEILOMETER_CONF service_credentials auth_url)
+    if [[ -n "$auth_url" ]]; then
+        # Go direct to the port
+        auth_url=${auth_url/%\/identity/:35357\/v3}
+        iniset $CEILOMETER_CONF service_credentials ${auth_url}
+    fi
 }
 
 function preinstall_ceilosca {
