@@ -18,6 +18,8 @@ import mock
 from oslo_utils import timeutils
 from oslotest import base
 
+from ceilometer.ceilosca_mapping.ceilosca_mapping import (
+    CeiloscaMappingDefinitionException)
 from ceilometer.publisher import monasca_data_filter as mdf
 from ceilometer import sample
 
@@ -48,6 +50,59 @@ class TestMonUtils(base.BaseTestCase):
                 'instance': ['state', 'state_description'],
                 'snapshot': ['status'],
                 'snapshot.size': ['status'],
+                'volume': ['status'],
+                'volume.size': ['status'],
+            }
+        }
+        self._field_mappings_cinder = {
+            'dimensions': ['resource_id',
+                           'project_id',
+                           'user_id',
+                           'geolocation',
+                           'region',
+                           'source',
+                           'availability_zone'],
+
+            'metadata': {
+                'common': ['event_type',
+                           'audit_period_beginning',
+                           'audit_period_ending',
+                           'arbitrary_new_field'],
+                'volume.create.end':
+                    ['size', 'status',
+                     {'metering.prn_name':
+                      "$.metadata[?(@.key = 'metering.prn_name')].value"},
+                     {'metering.prn_type':
+                      "$.metadata[?(@.key = 'metering.prn_type')].value"},
+                     'volume_type', 'created_at',
+                     'host'],
+                'volume': ['status'],
+                'volume.size': ['status'],
+            }
+        }
+
+        self._field_mappings_bad_format = {
+            'dimensions': ['resource_id',
+                           'project_id',
+                           'user_id',
+                           'geolocation',
+                           'region',
+                           'source',
+                           'availability_zone'],
+
+            'metadata': {
+                'common': ['event_type',
+                           'audit_period_beginning',
+                           'audit_period_ending',
+                           'arbitrary_new_field'],
+                'volume.create.end':
+                    ['size', 'status',
+                     {'metering.prn_name':
+                      "$.metadata[?(@.key = 'metering.prn_name')].value",
+                      'metering.prn_type':
+                      "$.metadata[?(@.key = 'metering.prn_type')].value"},
+                     'volume_type', 'created_at',
+                     'host'],
                 'volume': ['status'],
                 'volume.size': ['status'],
             }
@@ -112,15 +167,15 @@ class TestMonUtils(base.BaseTestCase):
             self.assertIsNone(r['dimensions'].get('user_id'))
 
     def convert_dict_to_list(self, dct, prefix=None, outlst={}):
-        prefix = prefix+'.' if prefix else ""
+        prefix = prefix + '.' if prefix else ""
         for k, v in dct.items():
             if type(v) is dict:
-                self.convert_dict_to_list(v, prefix+k, outlst)
+                self.convert_dict_to_list(v, prefix + k, outlst)
             else:
                 if v is not None:
-                    outlst[prefix+k] = v
+                    outlst[prefix + k] = v
                 else:
-                    outlst[prefix+k] = 'None'
+                    outlst[prefix + k] = 'None'
         return outlst
 
     def test_process_sample_metadata(self):
@@ -139,7 +194,7 @@ class TestMonUtils(base.BaseTestCase):
                                               'base_url2': '',
                                               'base_url3': None},
                                'size': 1500},
-            )
+        )
 
         to_patch = ("ceilometer.publisher.monasca_data_filter."
                     "MonascaDataFilter._get_mapping")
@@ -148,8 +203,9 @@ class TestMonUtils(base.BaseTestCase):
             r = data_filter.process_sample_for_monasca(s)
             self.assertEqual(s.name, r['name'])
             self.assertIsNotNone(r.get('value_meta'))
-            self.assertTrue(set(self.convert_dict_to_list(s.resource_metadata).
-                            items()).issubset(set(r['value_meta'].items())))
+            self.assertTrue(set(self.convert_dict_to_list(
+                s.resource_metadata
+            ).items()).issubset(set(r['value_meta'].items())))
 
     def test_process_sample_metadata_with_empty_data(self):
         s = sample.Sample(
@@ -168,7 +224,7 @@ class TestMonUtils(base.BaseTestCase):
                                               'base_url2': '',
                                               'base_url3': None},
                                'size': 0},
-            )
+        )
 
         to_patch = ("ceilometer.publisher.monasca_data_filter."
                     "MonascaDataFilter._get_mapping")
@@ -179,8 +235,9 @@ class TestMonUtils(base.BaseTestCase):
             self.assertEqual(s.name, r['name'])
             self.assertIsNotNone(r.get('value_meta'))
             self.assertEqual(s.source, r['dimensions']['source'])
-            self.assertTrue(set(self.convert_dict_to_list(s.resource_metadata).
-                            items()).issubset(set(r['value_meta'].items())))
+            self.assertTrue(set(self.convert_dict_to_list(
+                s.resource_metadata
+            ).items()).issubset(set(r['value_meta'].items())))
 
     def test_process_sample_metadata_with_extendedKey(self):
         s = sample.Sample(
@@ -199,7 +256,7 @@ class TestMonUtils(base.BaseTestCase):
                                               'base_url2': '',
                                               'base_url3': None},
                                'size': 0},
-            )
+        )
 
         to_patch = ("ceilometer.publisher.monasca_data_filter."
                     "MonascaDataFilter._get_mapping")
@@ -209,8 +266,9 @@ class TestMonUtils(base.BaseTestCase):
 
             self.assertEqual(s.name, r['name'])
             self.assertIsNotNone(r.get('value_meta'))
-            self.assertTrue(set(self.convert_dict_to_list(s.resource_metadata).
-                            items()).issubset(set(r['value_meta'].items())))
+            self.assertTrue(set(self.convert_dict_to_list(
+                s.resource_metadata
+            ).items()).issubset(set(r['value_meta'].items())))
             self.assertEqual(r.get('value_meta')['image_meta.base_url'],
                              s.resource_metadata.get('image_meta')
                              ['base_url'])
@@ -219,6 +277,232 @@ class TestMonUtils(base.BaseTestCase):
                              ['base_url2'])
             self.assertEqual(r.get('value_meta')['image_meta.base_url3'],
                              str(s.resource_metadata.get('image_meta')
-                             ['base_url3']))
+                                 ['base_url3']))
             self.assertEqual(r.get('value_meta')['image_meta.base_url4'],
                              'None')
+
+    def test_process_sample_metadata_with_jsonpath(self):
+        """Test meter sample in a format produced by cinder."""
+        s = sample.Sample(
+            name='volume.create.end',
+            type=sample.TYPE_CUMULATIVE,
+            unit='',
+            volume=1,
+            user_id='test',
+            project_id='test',
+            resource_id='test_run_tasks',
+            source='',
+            timestamp=datetime.datetime.utcnow().isoformat(),
+            resource_metadata={'event_type': 'volume.create.end',
+                               'status': 'available',
+                               'volume_type': None,
+                               # 'created_at': '2017-03-21T21:05:44+00:00',
+                               'host': 'testhost',
+                               # this "value: , key: " format is
+                               # how cinder reports metadata
+                               'metadata':
+                                   [{'value': 'aaa0001',
+                                     'key': 'metering.prn_name'},
+                                    {'value': 'Cust001',
+                                     'key': 'metering.prn_type'}],
+                               'size': 0},
+        )
+
+        to_patch = ("ceilometer.publisher.monasca_data_filter."
+                    "MonascaDataFilter._get_mapping")
+        # use the cinder specific mapping
+        with mock.patch(to_patch, side_effect=[self._field_mappings_cinder]):
+            data_filter = mdf.MonascaDataFilter()
+            r = data_filter.process_sample_for_monasca(s)
+
+            self.assertEqual(s.name, r['name'])
+            self.assertIsNotNone(r.get('value_meta'))
+            # Using convert_dict_to_list is too simplistic for this
+            self.assertEqual(r.get('value_meta')['event_type'],
+                             s.resource_metadata.get('event_type'),
+                             "Failed to match common element.")
+            self.assertEqual(r.get('value_meta')['host'],
+                             s.resource_metadata.get('host'),
+                             "Failed to match meter specific element.")
+            self.assertEqual(r.get('value_meta')['size'],
+                             s.resource_metadata.get('size'),
+                             "Unable to handle an int.")
+            self.assertEqual(r.get('value_meta')['metering.prn_name'],
+                             'aaa0001',
+                             "Failed to extract a value "
+                             "using specified jsonpath.")
+
+    def test_process_sample_metadata_with_jsonpath_nomatch(self):
+        """Test meter sample in a format produced by cinder.
+
+        Behavior when no matching element is found for the specified jsonpath
+        """
+
+        s = sample.Sample(
+            name='volume.create.end',
+            type=sample.TYPE_CUMULATIVE,
+            unit='',
+            volume=1,
+            user_id='test',
+            project_id='test',
+            resource_id='test_run_tasks',
+            source='',
+            timestamp=datetime.datetime.utcnow().isoformat(),
+            resource_metadata={'event_type': 'volume.create.end',
+                               'status': 'available',
+                               'volume_type': None,
+                               # 'created_at': '2017-03-21T21:05:44+00:00',
+                               'host': 'testhost',
+                               'metadata': [{'value': 'aaa0001',
+                                             'key': 'metering.THISWONTMATCH'}],
+                               'size': 0},
+        )
+
+        to_patch = ("ceilometer.publisher.monasca_data_filter."
+                    "MonascaDataFilter._get_mapping")
+        # use the cinder specific mapping
+        with mock.patch(to_patch, side_effect=[self._field_mappings_cinder]):
+            data_filter = mdf.MonascaDataFilter()
+            r = data_filter.process_sample_for_monasca(s)
+
+            self.assertEqual(s.name, r['name'])
+            self.assertIsNotNone(r.get('value_meta'))
+            # Using convert_dict_to_list is too simplistic for this
+            self.assertEqual(r.get('value_meta')['event_type'],
+                             s.resource_metadata.get('event_type'),
+                             "Failed to match common element.")
+            self.assertEqual(r.get('value_meta')['host'],
+                             s.resource_metadata.get('host'),
+                             "Failed to match meter specific element.")
+            self.assertEqual(r.get('value_meta')['size'],
+                             s.resource_metadata.get('size'),
+                             "Unable to handle an int.")
+            self.assertEqual(r.get('value_meta')['metering.prn_name'],
+                             'None', "This metadata should fail to match "
+                                     "and then return 'None'.")
+
+    def test_process_sample_metadata_with_jsonpath_value_not_str(self):
+        """Test where jsonpath is used but result is not a simple string"""
+
+        s = sample.Sample(
+            name='volume.create.end',
+            type=sample.TYPE_CUMULATIVE,
+            unit='',
+            volume=1,
+            user_id='test',
+            project_id='test',
+            resource_id='test_run_tasks',
+            source='',
+            timestamp=datetime.datetime.utcnow().isoformat(),
+            resource_metadata={'event_type': 'volume.create.end',
+                               'status': 'available',
+                               'volume_type': None,
+                               # 'created_at': '2017-03-21T21:05:44+00:00',
+                               'host': 'testhost',
+                               'metadata': [{'value': ['aaa0001', 'bbbb002'],
+                                             'key': 'metering.prn_name'}],
+                               'size': 0},
+        )
+
+        to_patch = ("ceilometer.publisher.monasca_data_filter."
+                    "MonascaDataFilter._get_mapping")
+        # use the cinder specific mapping
+        with mock.patch(to_patch, side_effect=[self._field_mappings_cinder]):
+            data_filter = mdf.MonascaDataFilter()
+            try:
+                # Don't assign to a variable, this should raise
+                data_filter.process_sample_for_monasca(s)
+            except CeiloscaMappingDefinitionException as e:
+                self.assertEqual(
+                    'Metadata format mismatch, value should be '
+                    'a simple string. [\'aaa0001\', \'bbbb002\']',
+                    e.message)
+
+    def test_process_sample_metadata_with_jsonpath_value_is_int(self):
+        """Test meter sample where jsonpath result is an int."""
+
+        s = sample.Sample(
+            name='volume.create.end',
+            type=sample.TYPE_CUMULATIVE,
+            unit='',
+            volume=1,
+            user_id='test',
+            project_id='test',
+            resource_id='test_run_tasks',
+            source='',
+            timestamp=datetime.datetime.utcnow().isoformat(),
+            resource_metadata={'event_type': 'volume.create.end',
+                               'status': 'available',
+                               'volume_type': None,
+                               # 'created_at': '2017-03-21T21:05:44+00:00',
+                               'host': 'testhost',
+                               'metadata': [{'value': 13,
+                                             'key': 'metering.prn_name'}],
+                               'size': 0},
+        )
+
+        to_patch = ("ceilometer.publisher.monasca_data_filter."
+                    "MonascaDataFilter._get_mapping")
+        # use the cinder specific mapping
+        with mock.patch(to_patch, side_effect=[self._field_mappings_cinder]):
+            data_filter = mdf.MonascaDataFilter()
+            r = data_filter.process_sample_for_monasca(s)
+
+            self.assertEqual(s.name, r['name'])
+            self.assertIsNotNone(r.get('value_meta'))
+            # Using convert_dict_to_list is too simplistic for this
+            self.assertEqual(r.get('value_meta')['event_type'],
+                             s.resource_metadata.get('event_type'),
+                             "Failed to match common element.")
+            self.assertEqual(r.get('value_meta')['host'],
+                             s.resource_metadata.get('host'),
+                             "Failed to match meter specific element.")
+            self.assertEqual(r.get('value_meta')['size'],
+                             s.resource_metadata.get('size'),
+                             "Unable to handle an int.")
+            self.assertEqual(r.get('value_meta')['metering.prn_name'],
+                             13,
+                             "Unable to handle an int "
+                             "through the jsonpath processing")
+
+    def test_process_sample_metadata_with_jsonpath_bad_format(self):
+        """Test handling of definition that is not written correctly"""
+
+        s = sample.Sample(
+            name='volume.create.end',
+            type=sample.TYPE_CUMULATIVE,
+            unit='',
+            volume=1,
+            user_id='test',
+            project_id='test',
+            resource_id='test_run_tasks',
+            source='',
+            timestamp=datetime.datetime.utcnow().isoformat(),
+            resource_metadata={'event_type': 'volume.create.end',
+                               'status': 'available',
+                               'volume_type': None,
+                               # 'created_at': '2017-03-21T21:05:44+00:00',
+                               'host': 'testhost',
+                               'metadata': [{'value': 13,
+                                             'key': 'metering.prn_name'}],
+                               'size': 0},
+        )
+
+        to_patch = ("ceilometer.publisher.monasca_data_filter."
+                    "MonascaDataFilter._get_mapping")
+        # use the bad mapping
+        with mock.patch(to_patch,
+                        side_effect=[self._field_mappings_bad_format]):
+            data_filter = mdf.MonascaDataFilter()
+            try:
+                # Don't assign to a variable as this should raise
+                data_filter.process_sample_for_monasca(s)
+            except CeiloscaMappingDefinitionException as e:
+                # Make sure we got the right kind of error
+                # Cannot check the whole message text, as python
+                # may reorder a dict when producing a string version
+                self.assertIn(
+                    'Field definition format mismatch, should '
+                    'have only one key:value pair.',
+                    e.message,
+                    "Did raise exception but wrong message - %s" % e.message)
