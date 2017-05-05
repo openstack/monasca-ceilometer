@@ -1256,7 +1256,7 @@ class Connection(base.Connection):
 
     def query_samples(self, filter_expr=None, orderby=None, limit=None):
         if not filter_expr:
-            msg = _("fitler must be specified")
+            msg = _("filter must be specified")
             raise ceilometer.NotImplementedError(msg)
         if orderby:
             msg = _("orderby is not supported")
