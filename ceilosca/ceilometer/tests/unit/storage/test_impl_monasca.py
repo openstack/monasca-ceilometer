@@ -917,7 +917,7 @@ class TestQuerySamples(_BaseTestCase):
                                      {'=': {"user_id": "456"}}]}]}
 
             self.assertRaisesWithMessage(
-                'fitler must be specified',
+                'filter must be specified',
                 ceilometer.NotImplementedError,
                 lambda: list(conn.query_samples()))
             order_by = [{"timestamp": "desc"}]
