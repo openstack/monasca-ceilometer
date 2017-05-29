@@ -16,12 +16,12 @@
 import collections
 import os
 
+import fixtures
 import mock
 from oslo_config import fixture as fixture_config
 from oslo_utils import fileutils
 from oslo_utils import timeutils
 from oslotest import base
-from oslotest import mockpatch
 import six
 import yaml
 
@@ -227,8 +227,9 @@ class TestMappedCeiloscaMetricProcessing(TestCeiloscaMapping):
         self.CONF([], project='ceilometer', validate_default_values=True)
 
     def test_fallback_mapping_file_path(self):
-        self.useFixture(mockpatch.PatchObject(self.CONF,
-                                              'find_file', return_value=None))
+        self.useFixture(fixtures.MockPatchObject(self.CONF,
+                                                 'find_file',
+                                                 return_value=None))
         fall_bak_path = ceilosca_mapping.get_config_file()
         self.assertIn("ceilosca_mapping/data/ceilosca_mapping.yaml",
                       fall_bak_path)

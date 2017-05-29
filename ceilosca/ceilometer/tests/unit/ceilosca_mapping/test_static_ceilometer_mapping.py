@@ -15,11 +15,11 @@
 
 import os
 
+import fixtures
 import mock
 from oslo_config import fixture as fixture_config
 from oslo_utils import fileutils
 from oslotest import base
-from oslotest import mockpatch
 import six
 import yaml
 
@@ -161,8 +161,9 @@ class TestMappedCeilometerStaticInfoProcessing(TestStaticInfoBase):
         self.CONF([], project='ceilometer', validate_default_values=True)
 
     def test_fallback_mapping_file_path(self):
-        self.useFixture(mockpatch.PatchObject(self.CONF,
-                                              'find_file', return_value=None))
+        self.useFixture(fixtures.MockPatchObject(self.CONF,
+                                                 'find_file',
+                                                 return_value=None))
         self.CONF.set_override('ceilometer_static_info_mapping',
                                ' ', group='monasca')
         self.static_info_mapper.reinitialize()
