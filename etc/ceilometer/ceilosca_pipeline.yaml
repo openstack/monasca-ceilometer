@@ -1,0 +1,22 @@
+---
+sources:
+    - name: meter_source
+      interval: 60
+      meters:
+        - "instance"
+        - "image"
+        - "image.size"
+        - "image.update"
+        - "image.upload"
+        - "image.delete"
+        - "snapshot"
+        - "snapshot.size"
+        - "volume"
+        - "volume.size"
+      sinks:
+        - meter_sink
+sinks:
+    - name: meter_sink
+      transformers:
+      publishers:
+        - monasca://http://192.168.10.6:8070/v2.0

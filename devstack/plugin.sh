@@ -35,7 +35,7 @@ function configure_ceilosca {
     if [[ -n "$auth_url" ]]; then
         # Go direct to the port
         auth_url=${auth_url/%\/identity/:35357\/v3}
-        iniset $CEILOMETER_CONF service_credentials ${auth_url}
+        iniset $CEILOMETER_CONF service_credentials auth_url ${auth_url}
     fi
 }
 

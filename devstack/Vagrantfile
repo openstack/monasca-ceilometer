@@ -36,9 +36,22 @@ Vagrant.configure(2) do |config|
     vb.memory = "12800"
     vb.cpus = 4
     # vb.customize ["modifyvm", :id, "--cpuexecutioncap", "50"]
-    # bento box bug workaround - https://github.com/chef/bendo/issues/688
+    # bento box bug workaround - https://github.com/chef/bento/issues/688
     vb.customize ["modifyvm", :id, "--cableconnected1", "on"]
   end
+
+  if !ENV['LOCAL_REPO'] || ENV['LOCAL_REPO'].empty?
+    puts "Using default repo"
+    local_repo_location = "../."
+  else
+    puts "Getting repo from ENV"
+    local_repo_location = ENV['LOCAL_REPO']
+  end
+
+  repo_path = File.expand_path(local_repo_location)
+  puts "Resolved repo at #{repo_path}"
+  # push up our monasca-transform code
+  config.vm.synced_folder local_repo_location, "/monasca-ceilometer-source"
 
   config.vm.provision "shell", privileged: false, path: "ceilosca.sh"
 end
