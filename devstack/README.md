@@ -15,5 +15,5 @@ Choose one:
   - The script should be tweaked before execution, particularly the lines.
     - export SERVICE_HOST=192.168.10.6
     - export HOST_IP_IFACE=eth0
-  - The script should be run by a sudoers user with no password required.  Such as is described in https://docs.openstack.org/developer/devstack/
+  - The script should be run by a sudoers user with no password required.  Such as is described in https://docs.openstack.org/devstack/latest/
   - And did not configure Horizon

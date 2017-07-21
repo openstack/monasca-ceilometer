@@ -1,4 +1,4 @@
-#reference: http://docs.openstack.org/admin-guide/telemetry-measurements.html
+#reference: https://docs.openstack.org/ceilometer/latest/admin/telemetry-measurements.html
 ---
 
 meter_info_static_map:
