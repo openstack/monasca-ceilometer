@@ -1,4 +1,5 @@
 # Copyright 2015 Hewlett-Packard Company
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -11,40 +12,33 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
-
-import os
-
-from keystoneauth1 import loading as ka_loading
 import mock
-from oslo_config import cfg
-from oslo_config import fixture as fixture_config
-from oslo_utils import fileutils
+
 from oslo_utils import netutils
 from oslotest import base
 
+from ceilometer import monasca_ceilometer_opts
 from ceilometer import monasca_client
-from monascaclient import exc
+from ceilometer import service
 
-cfg.CONF.import_group('service_credentials', 'ceilometer.service')
+from monascaclient import exc
+import tenacity
 
 
 class TestMonascaClient(base.BaseTestCase):
     def setUp(self):
         super(TestMonascaClient, self).setUp()
-        content = ("[service_credentials]\n"
-                   "auth_type = password\n"
-                   "username = ceilometer\n"
-                   "password = admin\n"
-                   "auth_url = http://localhost:5000/v2.0\n")
-        tempfile = fileutils.write_to_tempfile(content=content,
-                                               prefix='ceilometer',
-                                               suffix='.conf')
-        self.addCleanup(os.remove, tempfile)
-        self.conf = self.useFixture(fixture_config.Config()).conf
-        self.conf([], default_config_files=[tempfile])
-        ka_loading.load_auth_from_conf_options(self.conf,
-                                               "service_credentials")
-        self.conf.set_override('max_retries', 0, 'database')
+
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
+        self.CONF.set_override('service_username', 'ceilometer', 'monasca')
+        self.CONF.set_override('service_password', 'admin', 'monasca')
+        self.CONF.set_override('service_auth_url',
+                               'http://localhost:5000/v2.0',
+                               'monasca')
+
+        self.CONF.set_override('max_retries', 0, 'database')
         self.mc = self._get_client()
 
     def tearDown(self):
@@ -52,25 +46,21 @@ class TestMonascaClient(base.BaseTestCase):
         # auth_url after these tests run, which occasionally blocks test
         # case test_event_pipeline_endpoint_requeue_on_failure, so we
         # unregister it here.
-        self.conf.reset()
-        self.conf.unregister_opt(cfg.StrOpt('auth_url'),
-                                 group='service_credentials')
+        self.CONF.reset()
+        # self.CONF.unregister_opt(cfg.StrOpt('service_auth_url'),
+        #                          group='monasca')
         super(TestMonascaClient, self).tearDown()
 
     @mock.patch('monascaclient.client.Client')
-    @mock.patch('monascaclient.ksclient.KSClient')
-    def _get_client(self, ksclass_mock, monclient_mock):
-        ksclient_mock = ksclass_mock.return_value
-        ksclient_mock.token.return_value = "token123"
+    def _get_client(self, monclient_mock):
         return monasca_client.Client(
+            self.CONF,
             netutils.urlsplit("http://127.0.0.1:8080"))
 
     @mock.patch('monascaclient.client.Client')
-    @mock.patch('monascaclient.ksclient.KSClient')
-    def test_client_url_correctness(self, ksclass_mock, monclient_mock):
-        ksclient_mock = ksclass_mock.return_value
-        ksclient_mock.token.return_value = "token123"
+    def test_client_url_correctness(self, monclient_mock):
         mon_client = monasca_client.Client(
+            self.CONF,
             netutils.urlsplit("monasca://https://127.0.0.1:8080"))
         self.assertEqual("https://127.0.0.1:8080", mon_client._endpoint)
 
@@ -84,44 +74,46 @@ class TestMonascaClient(base.BaseTestCase):
     def test_metrics_create_exception(self):
         with mock.patch.object(
                 self.mc._mon_client.metrics, 'create',
-                side_effect=[exc.HTTPInternalServerError, True])\
+                side_effect=[exc.http.InternalServerError, True])\
                 as create_patch:
-            self.assertRaises(monasca_client.MonascaServiceException,
-                              self.mc.metrics_create)
+            e = self.assertRaises(tenacity.RetryError,
+                                  self.mc.metrics_create)
+            (original_ex, traceobj) = e.last_attempt.exception_info()
+            self.assertIsInstance(original_ex,
+                                  monasca_client.MonascaServiceException)
             self.assertEqual(1, create_patch.call_count)
 
     def test_metrics_create_unprocessable_exception(self):
         with mock.patch.object(
                 self.mc._mon_client.metrics, 'create',
-                side_effect=[exc.HTTPUnProcessable, True])\
+                side_effect=[exc.http.UnprocessableEntity, True])\
                 as create_patch:
             self.assertRaises(monasca_client.MonascaInvalidParametersException,
                               self.mc.metrics_create)
             self.assertEqual(1, create_patch.call_count)
 
     def test_invalid_service_creds(self):
-        conf = cfg.CONF.service_credentials
+        conf = self.CONF.monasca
 
         class SetOpt(object):
             def __enter__(self):
-                self.username = conf.username
-                conf.username = ""
+                self.username = conf.service_username
+                conf.service_username = ""
 
             def __exit__(self, exc_type, exc_val, exc_tb):
-                conf.username = self.username
+                conf.service_username = self.username
 
         with SetOpt():
             self.assertRaises(
                 monasca_client.MonascaInvalidServiceCredentialsException,
                 self._get_client)
 
-        self.assertIsNotNone(True, conf.username)
+        self.assertIsNotNone(True, conf.service_username)
 
     def test_retry_on_key_error(self):
-        self.conf.set_override('max_retries', 2, 'database')
-        self.conf.set_override('retry_interval', 1, 'database')
+        self.CONF.set_override('max_retries', 2, 'database')
+        self.CONF.set_override('retry_interval', 1, 'database')
         self.mc = self._get_client()
-
         with mock.patch.object(
                 self.mc._mon_client.metrics, 'list',
                 side_effect=[KeyError, []]) as mocked_metrics_list:
@@ -129,8 +121,8 @@ class TestMonascaClient(base.BaseTestCase):
             self.assertEqual(2, mocked_metrics_list.call_count)
 
     def test_no_retry_on_invalid_parameter(self):
-        self.conf.set_override('max_retries', 2, 'database')
-        self.conf.set_override('retry_interval', 1, 'database')
+        self.CONF.set_override('max_retries', 2, 'database')
+        self.CONF.set_override('retry_interval', 1, 'database')
         self.mc = self._get_client()
 
         def _check(exception):
@@ -142,12 +134,12 @@ class TestMonascaClient(base.BaseTestCase):
                 self.assertRaises(expected_exc, list, self.mc.metrics_list())
                 self.assertEqual(1, mocked_metrics_list.call_count)
 
-        _check(exc.HTTPUnProcessable)
-        _check(exc.HTTPBadRequest)
+        _check(exc.http.UnprocessableEntity)
+        _check(exc.http.BadRequest)
 
     def test_max_retris_not_too_much(self):
         def _check(configured, expected):
-            self.conf.set_override('max_retries', configured, 'database')
+            self.CONF.set_override('max_retries', configured, 'database')
             self.mc = self._get_client()
             self.assertEqual(expected, self.mc._max_retries)
 
@@ -159,27 +151,32 @@ class TestMonascaClient(base.BaseTestCase):
     def test_meaningful_exception_message(self):
         with mock.patch.object(
                 self.mc._mon_client.metrics, 'list',
-                side_effect=[exc.HTTPInternalServerError,
-                             exc.HTTPUnProcessable,
+                side_effect=[exc.http.InternalServerError,
+                             exc.http.UnprocessableEntity,
                              KeyError]):
             e = self.assertRaises(
-                monasca_client.MonascaServiceException,
+                tenacity.RetryError,
                 list, self.mc.metrics_list())
-            self.assertIn('Monasca service is unavailable', str(e))
+            (original_ex, traceobj) = e.last_attempt.exception_info()
+            self.assertIn('Monasca service is unavailable',
+                          str(original_ex))
             e = self.assertRaises(
                 monasca_client.MonascaInvalidParametersException,
                 list, self.mc.metrics_list())
-            self.assertIn('Request cannot be handled by Monasca', str(e))
+            self.assertIn('Request cannot be handled by Monasca',
+                          str(e))
             e = self.assertRaises(
-                monasca_client.MonascaException,
+                tenacity.RetryError,
                 list, self.mc.metrics_list())
-            self.assertIn('An exception is raised from Monasca', str(e))
+            (original_ex, traceobj) = e.last_attempt.exception_info()
+            self.assertIn('An exception is raised from Monasca',
+                          str(original_ex))
 
     @mock.patch.object(monasca_client.Client, '_refresh_client')
     def test_metrics_create_with_401(self, rc_patch):
         with mock.patch.object(
                 self.mc._mon_client.metrics, 'create',
-                side_effect=[exc.HTTPUnauthorized, True]):
+                side_effect=[exc.http.Unauthorized, True]):
             self.assertRaises(
                 monasca_client.MonascaInvalidParametersException,
                 self.mc.metrics_create)
@@ -206,7 +203,7 @@ class TestMonascaClient(base.BaseTestCase):
         expected_page_count = len(metric_list_pages)
         expected_metric_names = ["test1", "test2"]
 
-        self.conf.set_override('enable_api_pagination',
+        self.CONF.set_override('enable_api_pagination',
                                True, group='monasca')
         # get a new ceilosca mc
         mc = self._get_client()
@@ -245,7 +242,7 @@ class TestMonascaClient(base.BaseTestCase):
         expected_page_count = 1
         expected_metric_names = ["test1"]
 
-        self.conf.set_override('enable_api_pagination',
+        self.CONF.set_override('enable_api_pagination',
                                False, group='monasca')
         # get a new ceilosca mc
         mc = self._get_client()
@@ -283,7 +280,7 @@ class TestMonascaClient(base.BaseTestCase):
         expected_page_count = len(measurement_list_pages)
         expected_metric_names = ["test1", "test2"]
 
-        self.conf.set_override('enable_api_pagination',
+        self.CONF.set_override('enable_api_pagination',
                                True, group='monasca')
         # get a new ceilosca mc
         mc = self._get_client()
@@ -322,7 +319,7 @@ class TestMonascaClient(base.BaseTestCase):
         expected_page_count = 1
         expected_metric_names = ["test1"]
 
-        self.conf.set_override('enable_api_pagination',
+        self.CONF.set_override('enable_api_pagination',
                                False, group='monasca')
         # get a new ceilosca mc
         mc = self._get_client()
@@ -364,7 +361,7 @@ class TestMonascaClient(base.BaseTestCase):
         expected_page_count = len(statistics_list_pages)
         expected_metric_names = ["test1", "test2"]
 
-        self.conf.set_override('enable_api_pagination',
+        self.CONF.set_override('enable_api_pagination',
                                True, group='monasca')
         # get a new ceilosca mc
         mc = self._get_client()
@@ -403,7 +400,7 @@ class TestMonascaClient(base.BaseTestCase):
         expected_page_count = 1
         expected_metric_names = ["test1"]
 
-        self.conf.set_override('enable_api_pagination',
+        self.CONF.set_override('enable_api_pagination',
                                False, group='monasca')
         # get a new ceilosca mc
         mc = self._get_client()

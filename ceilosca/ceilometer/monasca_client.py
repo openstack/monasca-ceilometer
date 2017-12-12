@@ -1,4 +1,5 @@
 # Copyright 2015 Hewlett-Packard Company
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -16,27 +17,10 @@ import copy
 
 from monascaclient import client
 from monascaclient import exc
-from monascaclient import ksclient
-from oslo_config import cfg
 from oslo_log import log
-import retrying
+import tenacity
 
 from ceilometer.i18n import _
-from ceilometer import keystone_client
-
-
-monclient_opts = [
-    cfg.StrOpt('clientapi_version',
-               default='2_0',
-               help='Version of Monasca client to use while publishing.'),
-    cfg.BoolOpt('enable_api_pagination',
-                default=False,
-                help='Enable paging through monasca api resultset.'),
-]
-
-cfg.CONF.register_opts(monclient_opts, group='monasca')
-keystone_client.register_keystoneauth_opts(cfg.CONF)
-cfg.CONF.import_group('service_credentials', 'ceilometer.service')
 
 LOG = log.getLogger(__name__)
 
@@ -68,20 +52,23 @@ class MonascaInvalidParametersException(Exception):
 class Client(object):
     """A client which gets information via python-monascaclient."""
 
-    _ksclient = None
-
-    def __init__(self, parsed_url):
-        self._retry_interval = cfg.CONF.database.retry_interval * 1000
-        self._max_retries = cfg.CONF.database.max_retries or 1
+    def __init__(self, conf, parsed_url):
+        self.conf = conf
+        self._retry_interval = self.conf.database.retry_interval
+        self._max_retries = self.conf.database.max_retries or 1
         # enable monasca api pagination
-        self._enable_api_pagination = cfg.CONF.monasca.enable_api_pagination
+        self._enable_api_pagination = self.conf.monasca.enable_api_pagination
         # NOTE(zqfan): There are many concurrency requests while using
         # Ceilosca, to save system resource, we don't retry too many times.
         if self._max_retries < 0 or self._max_retries > 10:
             LOG.warning('Reduce max retries from %s to 10',
                         self._max_retries)
             self._max_retries = 10
-        conf = cfg.CONF.service_credentials
+
+        # self.conf.log_opt_values(LOG, logging.INFO)
+
+        conf = self.conf.service_credentials
+        monasca_conf = self.conf.monasca
         # because our ansible script are in another repo, the old setting
         # of auth_type is password-ceilometer-legacy which doesn't register
         # os_xxx options, so here we need to provide a compatible way to
@@ -90,14 +77,18 @@ class Client(object):
             username = conf.os_username
             password = conf.os_password
             auth_url = conf.os_auth_url
-            project_id = conf.os_tenant_id
+            # project_id = conf.os_tenant_id
             project_name = conf.os_tenant_name
         else:
-            username = conf.username
-            password = conf.password
-            auth_url = conf.auth_url
-            project_id = conf.project_id
-            project_name = conf.project_name
+            username = monasca_conf.service_username
+            password = monasca_conf.service_password
+            auth_url = monasca_conf.service_auth_url
+            # project_id = monasca_conf.service_project_id
+            project_name = monasca_conf.service_project_name
+            default_domain_name = monasca_conf.service_domain_name
+            region_name = monasca_conf.service_region_name
+            service_verify = monasca_conf.service_verify
+
         if not username or not password or not auth_url:
             err_msg = _("No user name or password or auth_url "
                         "found in service_credentials")
@@ -108,13 +99,17 @@ class Client(object):
             'username': username,
             'password': password,
             'auth_url': auth_url.replace("v2.0", "v3"),
-            'project_id': project_id,
+            # 'project_id': project_id,
             'project_name': project_name,
-            'region_name': conf.region_name,
-            'read_timeout': cfg.CONF.http_timeout,
-            'write_timeout': cfg.CONF.http_timeout,
+            'region_name': region_name,
+            'default_domain_name': default_domain_name,
+            'project_domain_name': default_domain_name,
+            'user_domain_name': default_domain_name,
+            'read_timeout': self.conf.http_timeout,
+            'write_timeout': self.conf.http_timeout,
+            'keystone_timeout': self.conf.http_timeout,
+            'verify': service_verify
         }
-
         self._kwargs = kwargs
         self._endpoint = parsed_url.netloc + parsed_url.path
         LOG.info(_("monasca_client: using %s as monasca end point") %
@@ -122,35 +117,29 @@ class Client(object):
         self._refresh_client()
 
     def _refresh_client(self):
-        if not Client._ksclient:
-            Client._ksclient = ksclient.KSClient(**self._kwargs)
-        self._kwargs['token'] = Client._ksclient.token
-        self._mon_client = client.Client(cfg.CONF.monasca.clientapi_version,
+        self._mon_client = client.Client(self.conf.monasca.clientapi_version,
                                          self._endpoint, **self._kwargs)
 
-    @staticmethod
-    def _retry_on_exception(e):
-        return not isinstance(e, MonascaInvalidParametersException)
-
     def call_func(self, func, **kwargs):
-        @retrying.retry(wait_fixed=self._retry_interval,
-                        stop_max_attempt_number=self._max_retries,
-                        retry_on_exception=self._retry_on_exception)
+        @tenacity.retry(
+            wait=tenacity.wait_fixed(self._retry_interval),
+            stop=tenacity.stop_after_attempt(self._max_retries),
+            retry=(tenacity.retry_if_exception_type(MonascaServiceException) |
+                   tenacity.retry_if_exception_type(MonascaException)))
         def _inner():
             try:
                 return func(**kwargs)
-            except (exc.HTTPInternalServerError,
-                    exc.HTTPServiceUnavailable,
-                    exc.HTTPBadGateway,
-                    exc.CommunicationError) as e:
+            except (exc.http.InternalServerError,
+                    exc.http.ServiceUnavailable,
+                    exc.http.BadGateway,
+                    exc.connection.ConnectionError) as e:
                 LOG.exception(e)
                 msg = '%s: %s' % (e.__class__.__name__, e)
                 raise MonascaServiceException(msg)
-            except exc.HTTPException as e:
+            except exc.http.HttpError as e:
                 LOG.exception(e)
                 msg = '%s: %s' % (e.__class__.__name__, e)
-                status_code = e.code
-                # exc.HTTPException has string code 'N/A'
+                status_code = e.http_status
                 if not isinstance(status_code, int):
                     status_code = 500
                 if 400 <= status_code < 500:
@@ -206,13 +195,17 @@ class Client(object):
             **search_args)
         # check if api pagination is enabled
         if self._enable_api_pagination:
-            while measurements:
+            while measurements and len(measurements[0]["measurements"]) > 0:
                 for measurement in measurements:
+                    if measurement["measurements"] is not None and \
+                       len(measurement["measurements"]) > 0:
+                        # offset for measurements is measurement id composited
+                        # with the last measurement's timestamp
+                        last_good_offset = '%s_%s' % (
+                            measurement['id'],
+                            measurement['measurements'][-1][0])
                     yield measurement
-                # offset for measurements is measurement id composited with
-                # the last measurement's timestamp
-                search_args['offset'] = '%s_%s' % (
-                    measurement['id'], measurement['measurements'][-1][0])
+                search_args['offset'] = last_good_offset
                 measurements = self.call_func(
                     self._mon_client.metrics.list_measurements,
                     **search_args)
@@ -231,17 +224,21 @@ class Client(object):
                                     **search_args)
         # check if api pagination is enabled
         if self._enable_api_pagination:
-            while statistics:
+            while statistics and len(statistics[0]["statistics"]) > 0:
                 for statistic in statistics:
+                    if statistic["statistics"] is not None and \
+                       len(statistic["statistics"]) > 0:
+                        # offset for statistics is statistic id composited with
+                        # the last statistic's timestamp
+                        last_good_offset = '%s_%s' % (
+                            statistic['id'], statistic['statistics'][-1][0])
                     yield statistic
+
                 # with groupby, the offset is unpredictable to me, we don't
                 # support pagination for it now.
                 if kwargs.get('group_by'):
                     break
-                # offset for statistics is statistic id composited with
-                # the last statistic's timestamp
-                search_args['offset'] = '%s_%s' % (
-                    statistic['id'], statistic['statistics'][-1][0])
+                search_args['offset'] = last_good_offset
                 statistics = self.call_func(
                     self._mon_client.metrics.list_statistics,
                     **search_args)

@@ -1,5 +1,6 @@
 #
 # Copyright 2015 Hewlett-Packard Company
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -20,13 +21,18 @@ from oslotest import base
 
 from ceilometer.ceilosca_mapping.ceilosca_mapping import (
     CeiloscaMappingDefinitionException)
+from ceilometer import monasca_ceilometer_opts
 from ceilometer.publisher import monasca_data_filter as mdf
 from ceilometer import sample
+from ceilometer import service
 
 
 class TestMonUtils(base.BaseTestCase):
     def setUp(self):
         super(TestMonUtils, self).setUp()
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
         self._field_mappings = {
             'dimensions': ['resource_id',
                            'project_id',
@@ -124,7 +130,7 @@ class TestMonUtils(base.BaseTestCase):
         to_patch = ("ceilometer.publisher.monasca_data_filter."
                     "MonascaDataFilter._get_mapping")
         with mock.patch(to_patch, side_effect=[self._field_mappings]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             r = data_filter.process_sample_for_monasca(s)
 
             self.assertEqual(s.name, r['name'])
@@ -160,7 +166,7 @@ class TestMonUtils(base.BaseTestCase):
         to_patch = ("ceilometer.publisher.monasca_data_filter."
                     "MonascaDataFilter._get_mapping")
         with mock.patch(to_patch, side_effect=[field_map]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             r = data_filter.process_sample_for_monasca(s)
 
             self.assertIsNone(r['dimensions'].get('project_id'))
@@ -199,7 +205,7 @@ class TestMonUtils(base.BaseTestCase):
         to_patch = ("ceilometer.publisher.monasca_data_filter."
                     "MonascaDataFilter._get_mapping")
         with mock.patch(to_patch, side_effect=[self._field_mappings]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             r = data_filter.process_sample_for_monasca(s)
             self.assertEqual(s.name, r['name'])
             self.assertIsNotNone(r.get('value_meta'))
@@ -229,7 +235,7 @@ class TestMonUtils(base.BaseTestCase):
         to_patch = ("ceilometer.publisher.monasca_data_filter."
                     "MonascaDataFilter._get_mapping")
         with mock.patch(to_patch, side_effect=[self._field_mappings]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             r = data_filter.process_sample_for_monasca(s)
 
             self.assertEqual(s.name, r['name'])
@@ -261,7 +267,7 @@ class TestMonUtils(base.BaseTestCase):
         to_patch = ("ceilometer.publisher.monasca_data_filter."
                     "MonascaDataFilter._get_mapping")
         with mock.patch(to_patch, side_effect=[self._field_mappings]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             r = data_filter.process_sample_for_monasca(s)
 
             self.assertEqual(s.name, r['name'])
@@ -312,7 +318,7 @@ class TestMonUtils(base.BaseTestCase):
                     "MonascaDataFilter._get_mapping")
         # use the cinder specific mapping
         with mock.patch(to_patch, side_effect=[self._field_mappings_cinder]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             r = data_filter.process_sample_for_monasca(s)
 
             self.assertEqual(s.name, r['name'])
@@ -362,7 +368,7 @@ class TestMonUtils(base.BaseTestCase):
                     "MonascaDataFilter._get_mapping")
         # use the cinder specific mapping
         with mock.patch(to_patch, side_effect=[self._field_mappings_cinder]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             r = data_filter.process_sample_for_monasca(s)
 
             self.assertEqual(s.name, r['name'])
@@ -408,7 +414,7 @@ class TestMonUtils(base.BaseTestCase):
                     "MonascaDataFilter._get_mapping")
         # use the cinder specific mapping
         with mock.patch(to_patch, side_effect=[self._field_mappings_cinder]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             try:
                 # Don't assign to a variable, this should raise
                 data_filter.process_sample_for_monasca(s)
@@ -445,7 +451,7 @@ class TestMonUtils(base.BaseTestCase):
                     "MonascaDataFilter._get_mapping")
         # use the cinder specific mapping
         with mock.patch(to_patch, side_effect=[self._field_mappings_cinder]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             r = data_filter.process_sample_for_monasca(s)
 
             self.assertEqual(s.name, r['name'])
@@ -493,7 +499,7 @@ class TestMonUtils(base.BaseTestCase):
         # use the bad mapping
         with mock.patch(to_patch,
                         side_effect=[self._field_mappings_bad_format]):
-            data_filter = mdf.MonascaDataFilter()
+            data_filter = mdf.MonascaDataFilter(self.CONF)
             try:
                 # Don't assign to a variable as this should raise
                 data_filter.process_sample_for_monasca(s)

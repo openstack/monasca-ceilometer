@@ -1,5 +1,6 @@
 #
 # Copyright 2015 Hewlett Packard
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -17,20 +18,16 @@
 
 import datetime
 import fixtures
-import os
 import time
 
-from keystoneauth1 import loading as ka_loading
 import mock
-from oslo_config import cfg
-from oslo_config import fixture as fixture_config
-from oslo_utils import fileutils
 from oslotest import base
 
+from ceilometer import monasca_ceilometer_opts
 from ceilometer import monasca_client as mon_client
 from ceilometer.publisher import monclient
 from ceilometer import sample
-from monascaclient import ksclient
+from ceilometer import service
 
 
 class FakeResponse(object):
@@ -112,21 +109,17 @@ class TestMonascaPublisher(base.BaseTestCase):
 
     def setUp(self):
         super(TestMonascaPublisher, self).setUp()
-        content = ("[service_credentials]\n"
-                   "auth_type = password\n"
-                   "username = ceilometer\n"
-                   "password = admin\n"
-                   "auth_url = http://localhost:5000/v2.0\n")
-        tempfile = fileutils.write_to_tempfile(content=content,
-                                               prefix='ceilometer',
-                                               suffix='.conf')
-        self.addCleanup(os.remove, tempfile)
-        self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], default_config_files=[tempfile])
-        ka_loading.load_auth_from_conf_options(self.CONF,
-                                               "service_credentials")
+
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
+        self.CONF.set_override('service_username', 'ceilometer', 'monasca')
+        self.CONF.set_override('service_password', 'admin', 'monasca')
+        self.CONF.set_override('service_auth_url',
+                               'http://localhost:5000/v2.0',
+                               'monasca')
+
         self.parsed_url = mock.MagicMock()
-        ksclient.KSClient = mock.MagicMock()
 
     def tearDown(self):
         # For some reason, cfg.CONF is registered a required option named
@@ -134,8 +127,8 @@ class TestMonascaPublisher(base.BaseTestCase):
         # case test_event_pipeline_endpoint_requeue_on_failure, so we
         # unregister it here.
         self.CONF.reset()
-        self.CONF.unregister_opt(cfg.StrOpt('auth_url'),
-                                 group='service_credentials')
+        # self.CONF.unregister_opt(cfg.StrOpt('service_auth_url'),
+        #                          group='monasca')
         super(TestMonascaPublisher, self).tearDown()
 
     @mock.patch("ceilometer.publisher.monasca_data_filter."
@@ -143,7 +136,7 @@ class TestMonascaPublisher(base.BaseTestCase):
                 side_effect=[field_mappings])
     def test_publisher_publish(self, mapping_patch):
         self.CONF.set_override('batch_mode', False, group='monasca')
-        publisher = monclient.MonascaPublisher(self.parsed_url)
+        publisher = monclient.MonascaPublisher(self.CONF, self.parsed_url)
         publisher.mon_client = mock.MagicMock()
 
         with mock.patch.object(publisher.mon_client,
@@ -161,7 +154,7 @@ class TestMonascaPublisher(base.BaseTestCase):
         self.CONF.set_override('batch_count', 3, group='monasca')
         self.CONF.set_override('batch_polling_interval', 1, group='monasca')
 
-        publisher = monclient.MonascaPublisher(self.parsed_url)
+        publisher = monclient.MonascaPublisher(self.CONF, self.parsed_url)
         publisher.mon_client = mock.MagicMock()
         with mock.patch.object(publisher.mon_client,
                                'metrics_create') as mock_create:
@@ -182,7 +175,7 @@ class TestMonascaPublisher(base.BaseTestCase):
         self.CONF.set_override('retry_interval', 2, group='monasca')
         self.CONF.set_override('max_retries', 1, group='monasca')
 
-        publisher = monclient.MonascaPublisher(self.parsed_url)
+        publisher = monclient.MonascaPublisher(self.CONF, self.parsed_url)
         publisher.mon_client = mock.MagicMock()
         with mock.patch.object(publisher.mon_client,
                                'metrics_create') as mock_create:
@@ -207,7 +200,8 @@ class TestMonascaPublisher(base.BaseTestCase):
             'ceilometer.publisher.file.FilePublisher',
             return_value=self.fake_publisher))
 
-        publisher = monclient.MonascaPublisher(self.parsed_url)
+        publisher = monclient.MonascaPublisher(self.CONF,
+                                               self.parsed_url)
         publisher.mon_client = mock.MagicMock()
 
         with mock.patch.object(publisher.mon_client,

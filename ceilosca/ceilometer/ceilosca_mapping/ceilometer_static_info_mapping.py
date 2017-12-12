@@ -1,5 +1,6 @@
 #
 # Copyright 2016 Hewlett Packard
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -20,22 +21,11 @@ import os
 import pkg_resources
 import yaml
 
-from oslo_config import cfg
 from oslo_log import log
-
 
 from ceilometer import sample
 
 LOG = log.getLogger(__name__)
-
-OPTS = [
-    cfg.StrOpt('ceilometer_static_info_mapping',
-               default='ceilometer_static_info_mapping.yaml',
-               help='Configuration mapping file to map ceilometer meters to '
-                    'their units an type informaiton'),
-]
-
-cfg.CONF.register_opts(OPTS, group='monasca')
 
 
 class CeilometerStaticMappingDefinitionException(Exception):
@@ -67,19 +57,19 @@ class CeilometerStaticMappingDefinition(object):
                 "Invalid type %s specified" % self.cfg['type'], self.cfg)
 
 
-def get_config_file():
-    config_file = cfg.CONF.monasca.ceilometer_static_info_mapping
+def get_config_file(conf):
+    config_file = conf.monasca.ceilometer_static_info_mapping
     if not os.path.exists(config_file):
-        config_file = cfg.CONF.find_file(config_file)
+        config_file = conf.find_file(config_file)
     if not config_file:
         config_file = pkg_resources.resource_filename(
             __name__, "data/ceilometer_static_info_mapping.yaml")
     return config_file
 
 
-def setup_ceilometer_static_mapping_config():
+def setup_ceilometer_static_mapping_config(conf):
     """Setup the meters definitions from yaml config file."""
-    config_file = get_config_file()
+    config_file = get_config_file(conf)
     if config_file is not None:
         LOG.debug("Static Ceilometer mapping file to map static info: %s",
                   config_file)
@@ -160,11 +150,12 @@ class ProcessMappedCeilometerStaticInfo(object):
                 __new__(cls, *args, **kwargs)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, conf):
         if not (self._instance and self._inited):
+            self.conf = conf
             self._inited = True
             self.__definitions = load_definitions(
-                setup_ceilometer_static_mapping_config())
+                setup_ceilometer_static_mapping_config(self.conf))
             self.__mapped_meter_info_map = dict()
             for d in self.__definitions:
                 self.__mapped_meter_info_map[d.cfg['name']] = d
@@ -178,9 +169,10 @@ class ProcessMappedCeilometerStaticInfo(object):
     def get_meter_static_info_key_val(self, meter_name, key):
         return self.__mapped_meter_info_map.get(meter_name).cfg[key]
 
-    def reinitialize(self):
+    def reinitialize(self, conf):
+        self.conf = conf
         self.__definitions = load_definitions(
-            setup_ceilometer_static_mapping_config())
+            setup_ceilometer_static_mapping_config(self.conf))
         self.__mapped_meter_info_map = dict()
         for d in self.__definitions:
             self.__mapped_meter_info_map[d.cfg['name']] = d

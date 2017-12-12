@@ -1,5 +1,6 @@
 #
 # Copyright 2012 New Dream Network, LLC (DreamHost)
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -14,17 +15,14 @@
 # under the License.
 """Base classes for API tests.
 """
-
-from oslo_config import cfg
-from oslo_config import fixture as fixture_config
 from oslo_policy import opts
 import pecan
 import pecan.testing
 
 from ceilometer.api import rbac
+from ceilometer import monasca_ceilometer_opts
+from ceilometer import service
 from ceilometer.tests import db as db_test_base
-
-cfg.CONF.import_group('api', 'ceilometer.api.controllers.v2.root')
 
 
 class FunctionalTest(db_test_base.TestBase):
@@ -38,7 +36,9 @@ class FunctionalTest(db_test_base.TestBase):
 
     def setUp(self):
         super(FunctionalTest, self).setUp()
-        self.CONF = self.useFixture(fixture_config.Config()).conf
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
         self.setup_messaging(self.CONF)
         opts.set_defaults(self.CONF)
 
@@ -48,6 +48,7 @@ class FunctionalTest(db_test_base.TestBase):
 
         self.CONF.set_override('gnocchi_is_enabled', False, group='api')
         self.CONF.set_override('aodh_is_enabled', False, group='api')
+        self.CONF.set_override('panko_is_enabled', False, group='api')
 
         self.app = self._make_app()
 
@@ -63,7 +64,8 @@ class FunctionalTest(db_test_base.TestBase):
             },
         }
 
-        return pecan.testing.load_test_app(self.config)
+        return pecan.testing.load_test_app(self.config,
+                                           conf=self.CONF)
 
     def tearDown(self):
         super(FunctionalTest, self).tearDown()

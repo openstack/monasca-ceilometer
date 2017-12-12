@@ -1,5 +1,6 @@
 #
 # Copyright 2015 Hewlett Packard
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -19,7 +20,6 @@ import os
 
 import dateutil.parser
 import mock
-from oslo_config import fixture as fixture_config
 from oslo_utils import fileutils
 from oslo_utils import timeutils
 from oslotest import base
@@ -30,6 +30,8 @@ import ceilometer
 from ceilometer.api.controllers.v2.meters import Aggregate
 from ceilometer.ceilosca_mapping import ceilometer_static_info_mapping
 from ceilometer.ceilosca_mapping import ceilosca_mapping
+from ceilometer import monasca_ceilometer_opts
+from ceilometer import service
 from ceilometer import storage
 from ceilometer.storage import impl_monasca
 from ceilometer.storage import models as storage_models
@@ -39,18 +41,14 @@ class _BaseTestCase(base.BaseTestCase):
 
     def setUp(self):
         super(_BaseTestCase, self).setUp()
-        content = ("[service_credentials]\n"
-                   "auth_type = password\n"
-                   "username = ceilometer\n"
-                   "password = admin\n"
-                   "auth_url = http://localhost:5000/v2.0\n")
-        tempfile = fileutils.write_to_tempfile(content=content,
-                                               prefix='ceilometer',
-                                               suffix='.conf')
-        self.addCleanup(os.remove, tempfile)
-        conf = self.useFixture(fixture_config.Config()).conf
-        conf([], default_config_files=[tempfile])
-        self.CONF = conf
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
+        self.CONF.set_override('service_username', 'ceilometer', 'monasca')
+        self.CONF.set_override('service_password', 'admin', 'monasca')
+        self.CONF.set_override('service_auth_url',
+                               'http://localhost:5000/v2.0',
+                               'monasca')
         mdf = mock.patch.object(impl_monasca, 'MonascaDataFilter')
         mdf.start()
         self.addCleanup(mdf.stop)
@@ -58,8 +56,8 @@ class _BaseTestCase(base.BaseTestCase):
         spl.start()
         self.addCleanup(spl.stop)
         self.static_info_mapper = ceilometer_static_info_mapping\
-            .ProcessMappedCeilometerStaticInfo()
-        self.static_info_mapper.reinitialize()
+            .ProcessMappedCeilometerStaticInfo(self.CONF)
+        self.static_info_mapper.reinitialize(self.CONF)
 
     def assertRaisesWithMessage(self, msg, exc_class, func, *args, **kwargs):
         try:
@@ -133,12 +131,13 @@ class TestGetResources(_BaseTestCase):
             TestGetResources.cfg)
         self.CONF.set_override('ceilometer_monasca_metrics_mapping',
                                ceilosca_mapping_file, group='monasca')
-        ceilosca_mapper = ceilosca_mapping.ProcessMappedCeiloscaMetric()
-        ceilosca_mapper.reinitialize()
+        ceilosca_mapper = ceilosca_mapping\
+            .ProcessMappedCeiloscaMetric(self.CONF)
+        ceilosca_mapper.reinitialize(self.CONF)
 
     def test_not_implemented_params(self):
         with mock.patch("ceilometer.monasca_client.Client"):
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
 
             kwargs = dict(start_timestamp_op='le')
             self.assertRaises(ceilometer.NotImplementedError,
@@ -149,7 +148,7 @@ class TestGetResources(_BaseTestCase):
 
     def test_dims_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             mnl_mock = mock_client().metric_names_list
             mnl_mock.return_value = [
                 {
@@ -178,7 +177,7 @@ class TestGetResources(_BaseTestCase):
     def test_get_resources(self, mock_utcnow):
         mock_utcnow.return_value = datetime.datetime(2016, 4, 7, 18, 20)
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             mnl_mock = mock_client().metric_names_list
             mnl_mock.return_value = [
                 {
@@ -225,7 +224,7 @@ class TestGetResources(_BaseTestCase):
 
     def test_get_resources_limit(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
 
             mnl_mock = mock_client().metric_names_list
             mnl_mock.return_value = [
@@ -263,7 +262,7 @@ class TestGetResources(_BaseTestCase):
     def test_get_resources_simple_metaquery(self, mock_utcnow):
         mock_utcnow.return_value = datetime.datetime(2016, 4, 7, 18, 28)
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             mnl_mock = mock_client().metric_names_list
             mnl_mock.return_value = [
                 {
@@ -325,7 +324,7 @@ class MeterTest(_BaseTestCase):
 
     def test_not_implemented_params(self):
         with mock.patch('ceilometer.monasca_client.Client'):
-            conn = impl_monasca.Connection('127.0.0.1:8080')
+            conn = impl_monasca.Connection(self.CONF, '127.0.0.1:8080')
 
             kwargs = dict(metaquery=True)
             self.assertRaises(ceilometer.NotImplementedError,
@@ -333,7 +332,7 @@ class MeterTest(_BaseTestCase):
 
     def test_metrics_list_call(self):
         with mock.patch('ceilometer.monasca_client.Client') as mock_client:
-            conn = impl_monasca.Connection('127.0.0.1:8080')
+            conn = impl_monasca.Connection(self.CONF, '127.0.0.1:8080')
             metrics_list_mock = mock_client().metrics_list
 
             kwargs = dict(user='user-1',
@@ -381,7 +380,7 @@ class MeterTest(_BaseTestCase):
              {"id": "335b5d569ad29dc61b3dc24609fad3619e947944",
               "name": "subnet.update"}])
         with mock.patch('ceilometer.monasca_client.Client') as mock_client:
-            conn = impl_monasca.Connection('127.0.0.1:8080')
+            conn = impl_monasca.Connection(self.CONF, '127.0.0.1:8080')
             metric_names_list_mock = mock_client().metric_names_list
             metric_names_list_mock.return_value = (
                 dummy_metric_names_mocked_return_value
@@ -429,7 +428,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_not_implemented_params(self):
         with mock.patch("ceilometer.monasca_client.Client"):
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
 
             sample_filter = storage.SampleFilter(meter='specific meter',
                                                  message_id='specific message')
@@ -438,7 +437,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_name(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
                 TestGetSamples.dummy_metrics_mocked_return_value
@@ -460,7 +459,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_start_timestamp_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
 
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
@@ -482,7 +481,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_timestamp_filter_exclusive_range(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
 
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
@@ -515,7 +514,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_limit(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
 
             metrics_list_mock = mock_client().metrics_list
 
@@ -544,7 +543,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_project_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
                 [{u'dimensions': dict(project_id='specific project'),
@@ -564,7 +563,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_resource_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
                 [{u'dimensions': dict(resource_id='specific resource'),
@@ -583,7 +582,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_source_filter(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
                 [{u'dimensions': dict(source='specific source'),
@@ -602,7 +601,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_simple_metaquery(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
                 TestGetSamples.dummy_metrics_mocked_return_value
@@ -620,7 +619,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_simple_metaquery_with_extended_key(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
                 TestGetSamples.dummy_metrics_mocked_return_value
@@ -639,7 +638,7 @@ class TestGetSamples(_BaseTestCase):
 
     def test_get_samples_results(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.return_value = (
                 [{u'dimensions': {
@@ -718,7 +717,7 @@ class MeterStatisticsTest(_BaseTestCase):
 
     def test_not_implemented_params(self):
         with mock.patch("ceilometer.monasca_client.Client"):
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
 
             self.assertRaisesWithMessage("Query without filter "
                                          "not implemented",
@@ -781,7 +780,7 @@ class MeterStatisticsTest(_BaseTestCase):
     def test_stats_list_called_with(self, mock_utcnow):
         mock_utcnow.return_value = datetime.datetime(2016, 4, 7, 18, 31)
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             sl_mock = mock_client().statistics_list
 
             sf = storage.SampleFilter()
@@ -813,7 +812,7 @@ class MeterStatisticsTest(_BaseTestCase):
 
     def test_stats_list(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             sl_mock = mock_client().statistics_list
             sl_mock.return_value = [
                 {
@@ -851,7 +850,7 @@ class MeterStatisticsTest(_BaseTestCase):
 
     def test_stats_list_with_groupby(self):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             sl_mock = mock_client().statistics_list
             sl_mock.return_value = [
                 {
@@ -911,7 +910,7 @@ class TestQuerySamples(_BaseTestCase):
 
     def test_query_samples_not_implemented_params(self):
         with mock.patch("ceilometer.monasca_client.Client"):
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             query = {'and': [{'=': {'counter_name': 'instance'}},
                              {'or': [{'=': {"project_id": "123"}},
                                      {'=': {"user_id": "456"}}]}]}
@@ -956,7 +955,7 @@ class TestQuerySamples(_BaseTestCase):
             return samples.pop()
 
         with mock.patch("ceilometer.monasca_client.Client"):
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             with mock.patch.object(conn, 'get_samples') as gsm:
                 gsm.side_effect = _get_samples
 
@@ -998,7 +997,7 @@ class TestQuerySamples(_BaseTestCase):
             return samples.pop()
 
         with mock.patch("ceilometer.monasca_client.Client"):
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             with mock.patch.object(conn, 'get_samples') as gsm:
                 gsm.side_effect = _get_samples
 
