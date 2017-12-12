@@ -1,5 +1,6 @@
 #
 # (C) Copyright 2015-2017 Hewlett Packard Enterprise Development LP
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -15,6 +16,7 @@
 
 """Simple monasca storage backend.
 """
+import traceback
 
 from collections import defaultdict
 import copy
@@ -23,7 +25,6 @@ import itertools
 import operator
 
 from monascaclient import exc as monasca_exc
-from oslo_config import cfg
 from oslo_log import log
 from oslo_serialization import jsonutils
 from oslo_utils import netutils
@@ -42,15 +43,6 @@ from ceilometer import storage
 from ceilometer.storage import base
 from ceilometer.storage import models as api_models
 from ceilometer import utils
-
-OPTS = [
-    cfg.IntOpt('default_stats_period',
-               default=300,
-               help='Default period (in seconds) to use for querying stats '
-                    'in case no period specified in the stats API call.'),
-]
-
-cfg.CONF.register_opts(OPTS, group='monasca')
 
 LOG = log.getLogger(__name__)
 
@@ -96,13 +88,23 @@ class Connection(base.Connection):
         AVAILABLE_STORAGE_CAPABILITIES,
     )
 
-    def __init__(self, url):
-        self.mc = monasca_client.Client(netutils.urlsplit(url))
-        self.mon_filter = MonascaDataFilter()
-        self.ceilosca_mapper = ProcessMappedCeiloscaMetric()
-        self.pipeline_reader = PipelineReader()
-        self.meter_static_info = ProcessMappedCeilometerStaticInfo()
-        self.meters_from_pipeline = self.pipeline_reader.get_pipeline_meters()
+    def __init__(self, conf, url):
+        try:
+            super(Connection, self).__init__(conf, url)
+            self.conf = conf
+            self.mc = monasca_client.Client(self.conf, netutils.urlsplit(url))
+            self.mon_filter = MonascaDataFilter(self.conf)
+            self.pipeline_reader = PipelineReader(conf)
+            self.ceilosca_mapper = ProcessMappedCeiloscaMetric(conf)
+            self.meter_static_info = ProcessMappedCeilometerStaticInfo(conf)
+            self.meters_from_pipeline = self.pipeline_reader\
+                .get_pipeline_meters()
+        except Exception as ex:
+            LOG.info("ERROR: creating monasca connection: " + str(ex.message))
+            LOG.info(ex)
+            LOG.info("ERROR: creating monasca connection: done")
+            LOG.info(traceback.format_ex())
+            traceback.print_ex()
 
     @staticmethod
     def _convert_to_dict(stats, cols):
@@ -878,7 +880,7 @@ class Connection(base.Connection):
         dims_filter = {k: v for k, v in dims_filter.items() if v is not None}
 
         period = period if period \
-            else cfg.CONF.monasca.default_stats_period
+            else self.conf.monasca.default_stats_period
 
         _search_args = dict(
             name=filter.meter,

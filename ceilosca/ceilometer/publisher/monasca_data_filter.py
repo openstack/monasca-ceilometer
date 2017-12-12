@@ -1,5 +1,6 @@
 #
 # Copyright 2015 Hewlett-Packard Company
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -16,7 +17,6 @@
 import datetime
 
 from jsonpath_rw_ext import parser
-from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import timeutils
 import yaml
@@ -24,27 +24,6 @@ import yaml
 from ceilometer.ceilosca_mapping.ceilosca_mapping import (
     CeiloscaMappingDefinitionException)
 from ceilometer import sample as sample_util
-
-OPTS = [
-    cfg.StrOpt('monasca_mappings',
-               default='/etc/ceilometer/monasca_field_definitions.yaml',
-               help='Monasca static and dynamic field mappings'),
-]
-
-cfg.CONF.register_opts(OPTS, group='monasca')
-
-MULTI_REGION_OPTS = [
-    cfg.StrOpt('control_plane',
-               default='None',
-               help='The name of control plane'),
-    cfg.StrOpt('cluster',
-               default='None',
-               help='The name of cluster'),
-    cfg.StrOpt('cloud_name',
-               default='None',
-               help='The name of cloud')
-]
-cfg.CONF.register_opts(MULTI_REGION_OPTS)
 
 LOG = log.getLogger(__name__)
 
@@ -60,12 +39,13 @@ class NoMappingsFound(Exception):
 class MonascaDataFilter(object):
     JSONPATH_RW_PARSER = parser.ExtentedJsonPathParser()
 
-    def __init__(self):
+    def __init__(self, conf):
+        self.conf = conf
         self._mapping = {}
         self._mapping = self._get_mapping()
 
     def _get_mapping(self):
-        with open(cfg.CONF.monasca.monasca_mappings, 'r') as f:
+        with open(self.conf.monasca.monasca_mappings, 'r') as f:
             try:
                 return yaml.safe_load(f)
             except yaml.YAMLError as err:
@@ -74,13 +54,13 @@ class MonascaDataFilter(object):
                     errmsg = ("Invalid YAML syntax in Monasca Data "
                               "Filter file %(file)s at line: "
                               "%(line)s, column: %(column)s."
-                              % dict(file=cfg.CONF.monasca.monasca_mappings,
+                              % dict(file=self.conf.monasca.monasca_mappings,
                                      line=mark.line + 1,
                                      column=mark.column + 1))
                 else:
                     errmsg = ("YAML error reading Monasca Data Filter "
                               "file %(file)s" %
-                              dict(file=cfg.CONF.monasca.monasca_mappings))
+                              dict(file=self.conf.monasca.monasca_mappings))
                 LOG.error(errmsg)
                 raise UnableToLoadMappings(err.message)
 
@@ -181,9 +161,9 @@ class MonascaDataFilter(object):
         dimensions['datasource'] = 'ceilometer'
         # control_plane, cluster and cloud_name can be None, but we use
         # literal 'None' for such case
-        dimensions['control_plane'] = cfg.CONF.control_plane or 'None'
-        dimensions['cluster'] = cfg.CONF.cluster or 'None'
-        dimensions['cloud_name'] = cfg.CONF.cloud_name or 'None'
+        dimensions['control_plane'] = self.conf.monasca.control_plane or 'None'
+        dimensions['cluster'] = self.conf.monasca.cluster or 'None'
+        dimensions['cloud_name'] = self.conf.monasca.cloud_name or 'None'
         if isinstance(sample_obj, sample_util.Sample):
             sample = sample_obj.as_dict()
         elif isinstance(sample_obj, dict):

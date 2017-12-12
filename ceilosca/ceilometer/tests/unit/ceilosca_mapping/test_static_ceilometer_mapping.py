@@ -1,5 +1,6 @@
 #
 # Copyright 2016 Hewlett Packard
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -17,7 +18,7 @@ import os
 
 import fixtures
 import mock
-from oslo_config import fixture as fixture_config
+# from oslo_config import fixture as fixture_config
 from oslo_utils import fileutils
 from oslotest import base
 import six
@@ -28,6 +29,8 @@ from ceilometer.ceilosca_mapping.ceilometer_static_info_mapping import (
     CeilometerStaticMappingDefinition)
 from ceilometer.ceilosca_mapping.ceilometer_static_info_mapping import (
     CeilometerStaticMappingDefinitionException)
+from ceilometer import monasca_ceilometer_opts
+from ceilometer import service
 from ceilometer.storage import impl_monasca
 
 
@@ -152,13 +155,16 @@ class TestMappedCeilometerStaticInfoProcessing(TestStaticInfoBase):
 
     def setUp(self):
         super(TestMappedCeilometerStaticInfoProcessing, self).setUp()
-        self.CONF = self.useFixture(fixture_config.Config()).conf
+        # self.CONF = self.useFixture(fixture_config.Config()).conf
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
         static_info_mapping_file = self.setup_static_mapping_def_file(self.cfg)
         self.CONF.set_override('ceilometer_static_info_mapping',
                                static_info_mapping_file, group='monasca')
         self.static_info_mapper = ceilometer_static_info_mapping\
-            .ProcessMappedCeilometerStaticInfo()
-        self.CONF([], project='ceilometer', validate_default_values=True)
+            .ProcessMappedCeilometerStaticInfo(self.CONF)
+        # self.CONF([], project='ceilometer', validate_default_values=True)
 
     def test_fallback_mapping_file_path(self):
         self.useFixture(fixtures.MockPatchObject(self.CONF,
@@ -166,8 +172,9 @@ class TestMappedCeilometerStaticInfoProcessing(TestStaticInfoBase):
                                                  return_value=None))
         self.CONF.set_override('ceilometer_static_info_mapping',
                                ' ', group='monasca')
-        self.static_info_mapper.reinitialize()
-        fall_bak_path = ceilometer_static_info_mapping.get_config_file()
+        self.static_info_mapper.reinitialize(self.CONF)
+        fall_bak_path = ceilometer_static_info_mapping.get_config_file(
+            self.CONF)
         self.assertIn(
             "ceilosca_mapping/data/ceilometer_static_info_mapping.yaml",
             fall_bak_path)
@@ -198,7 +205,7 @@ class TestMappedCeilometerStaticInfoProcessing(TestStaticInfoBase):
         self.CONF.set_override('ceilometer_static_info_mapping',
                                static_info_mapping_file, group='monasca')
         data = ceilometer_static_info_mapping.\
-            setup_ceilometer_static_mapping_config()
+            setup_ceilometer_static_mapping_config(self.CONF)
         meter_loaded = ceilometer_static_info_mapping.load_definitions(data)
         self.assertEqual(3, len(meter_loaded))
         LOG.error.assert_called_with(
@@ -206,7 +213,7 @@ class TestMappedCeilometerStaticInfoProcessing(TestStaticInfoBase):
             "Invalid type foo specified")
 
     def test_list_of_meters_returned(self):
-        self.static_info_mapper.reinitialize()
+        self.static_info_mapper.reinitialize(self.CONF)
         self.assertItemsEqual(['disk.ephemeral.size', 'disk.root.size',
                                'image', 'image.delete'],
                               self.static_info_mapper.
@@ -225,7 +232,7 @@ class TestMappedCeilometerStaticInfoProcessing(TestStaticInfoBase):
         static_info_mapping_file = self.setup_static_mapping_def_file(cfg)
         self.CONF.set_override('ceilometer_static_info_mapping',
                                static_info_mapping_file, group='monasca')
-        self.static_info_mapper.reinitialize()
+        self.static_info_mapper.reinitialize(self.CONF)
         self.assertEqual('gauge',
                          self.static_info_mapper.get_meter_static_info_key_val(
                              'disk.ephemeral.size', 'type')
@@ -239,8 +246,11 @@ class TestMoanscaDriverForMappedStaticInfo(TestStaticInfoBase):
 
     def setUp(self):
         super(TestMoanscaDriverForMappedStaticInfo, self).setUp()
-        self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], project='ceilometer', validate_default_values=True)
+        # self.CONF = self.useFixture(fixture_config.Config()).conf
+        # self.CONF([], project='ceilometer', validate_default_values=True)
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
         pipeline_cfg_file = self.setup_pipeline_file(self.pipeline_data)
         self.CONF.set_override("pipeline_cfg_file", pipeline_cfg_file)
         static_info_mapping_file = self.setup_static_mapping_def_file(self.cfg)
@@ -251,8 +261,8 @@ class TestMoanscaDriverForMappedStaticInfo(TestStaticInfoBase):
         self.CONF.set_override('ceilometer_monasca_metrics_mapping',
                                ceilosca_mapping_file, group='monasca')
         self.static_info_mapper = ceilometer_static_info_mapping\
-            .ProcessMappedCeilometerStaticInfo()
-        self.static_info_mapper.reinitialize()
+            .ProcessMappedCeilometerStaticInfo(self.CONF)
+        self.static_info_mapper.reinitialize(self.CONF)
 
     def test_get_statc_info_for_mapped_meters_uniq(self, mdf_mock):
         dummy_metric_names_mocked_return_value = (
@@ -262,7 +272,7 @@ class TestMoanscaDriverForMappedStaticInfo(TestStaticInfoBase):
               "name": "fake_metric"}])
 
         with mock.patch('ceilometer.monasca_client.Client') as mock_client:
-            conn = impl_monasca.Connection('127.0.0.1:8080')
+            conn = impl_monasca.Connection(self.CONF, '127.0.0.1:8080')
             metric_names_list_mock = mock_client().metric_names_list
             metric_names_list_mock.return_value = (
                 dummy_metric_names_mocked_return_value

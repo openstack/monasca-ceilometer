@@ -23,6 +23,7 @@ ceilosca_files = {
     for file in
     [
         'monasca_client.py',
+        'monasca_ceilometer_opts.py',
         'publisher/monasca_data_filter.py',
         'publisher/monclient.py',
         'storage/impl_monasca.py'

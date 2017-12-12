@@ -1,5 +1,6 @@
 #
 # Copyright 2016 Hewlett Packard
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -18,7 +19,6 @@ import os
 
 import fixtures
 import mock
-from oslo_config import fixture as fixture_config
 from oslo_utils import fileutils
 from oslo_utils import timeutils
 from oslotest import base
@@ -31,6 +31,8 @@ from ceilometer.ceilosca_mapping.ceilosca_mapping import (
 from ceilometer.ceilosca_mapping.ceilosca_mapping import (
     CeiloscaMappingDefinitionException)
 from ceilometer.ceilosca_mapping.ceilosca_mapping import PipelineReader
+from ceilometer import monasca_ceilometer_opts
+from ceilometer import service
 from ceilometer import storage
 from ceilometer.storage import impl_monasca
 from ceilometer.storage import models as storage_models
@@ -150,15 +152,16 @@ class TestGetPipelineReader(TestCeiloscaMapping):
 
     def setUp(self):
         super(TestGetPipelineReader, self).setUp()
-        self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], project='ceilometer', validate_default_values=True)
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
 
     def test_pipeline_reader(self):
         pipeline_cfg_file = self.setup_pipeline_file(
             self.pipeline_data)
         self.CONF.set_override("pipeline_cfg_file", pipeline_cfg_file)
 
-        test_pipeline_reader = PipelineReader()
+        test_pipeline_reader = PipelineReader(self.CONF)
 
         self.assertEqual(set(['testbatch', 'testbatch2']),
                          test_pipeline_reader.get_pipeline_meters()
@@ -223,14 +226,16 @@ class TestMappedCeiloscaMetricProcessing(TestCeiloscaMapping):
 
     def setUp(self):
         super(TestMappedCeiloscaMetricProcessing, self).setUp()
-        self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], project='ceilometer', validate_default_values=True)
+
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
 
     def test_fallback_mapping_file_path(self):
         self.useFixture(fixtures.MockPatchObject(self.CONF,
                                                  'find_file',
                                                  return_value=None))
-        fall_bak_path = ceilosca_mapping.get_config_file()
+        fall_bak_path = ceilosca_mapping.get_config_file(self.CONF)
         self.assertIn("ceilosca_mapping/data/ceilosca_mapping.yaml",
                       fall_bak_path)
 
@@ -264,7 +269,7 @@ class TestMappedCeiloscaMetricProcessing(TestCeiloscaMapping):
         ceilosca_mapping_file = self.setup_ceilosca_mapping_def_file(cfg)
         self.CONF.set_override('ceilometer_monasca_metrics_mapping',
                                ceilosca_mapping_file, group='monasca')
-        data = ceilosca_mapping.setup_ceilosca_mapping_config()
+        data = ceilosca_mapping.setup_ceilosca_mapping_config(self.CONF)
         meter_loaded = ceilosca_mapping.load_definitions(data)
         self.assertEqual(1, len(meter_loaded))
         LOG.error.assert_called_with(
@@ -275,8 +280,9 @@ class TestMappedCeiloscaMetricProcessing(TestCeiloscaMapping):
         ceilosca_mapping_file = self.setup_ceilosca_mapping_def_file(self.cfg)
         self.CONF.set_override('ceilometer_monasca_metrics_mapping',
                                ceilosca_mapping_file, group='monasca')
-        ceilosca_mapper = ceilosca_mapping.ProcessMappedCeiloscaMetric()
-        ceilosca_mapper.reinitialize()
+        ceilosca_mapper = ceilosca_mapping\
+            .ProcessMappedCeiloscaMetric(self.CONF)
+        ceilosca_mapper.reinitialize(self.CONF)
         self.assertItemsEqual(['fake_metric', 'fake_metric2', 'fake_metric3'],
                               ceilosca_mapper.get_list_monasca_metrics().keys()
                               )
@@ -299,8 +305,9 @@ class TestMappedCeiloscaMetricProcessing(TestCeiloscaMapping):
         ceilosca_mapping_file = self.setup_ceilosca_mapping_def_file(cfg)
         self.CONF.set_override('ceilometer_monasca_metrics_mapping',
                                ceilosca_mapping_file, group='monasca')
-        ceilosca_mapper = ceilosca_mapping.ProcessMappedCeiloscaMetric()
-        ceilosca_mapper.reinitialize()
+        ceilosca_mapper = ceilosca_mapping\
+            .ProcessMappedCeiloscaMetric(self.CONF)
+        ceilosca_mapper.reinitialize(self.CONF)
         self.assertEqual('fake_metric',
                          ceilosca_mapper.get_monasca_metric_name('fake_meter')
                          )
@@ -317,20 +324,27 @@ class TestMoanscaDriverForMappedMetrics(TestCeiloscaMapping):
     Aggregate = collections.namedtuple("Aggregate", ['func', 'param'])
 
     def setUp(self):
+
         super(TestMoanscaDriverForMappedMetrics, self).setUp()
-        self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], project='ceilometer', validate_default_values=True)
+
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
+
         pipeline_cfg_file = self.setup_pipeline_file(self.pipeline_data)
         self.CONF.set_override("pipeline_cfg_file", pipeline_cfg_file)
+
         ceilosca_mapping_file = self.setup_ceilosca_mapping_def_file(self.cfg)
         self.CONF.set_override('ceilometer_monasca_metrics_mapping',
                                ceilosca_mapping_file, group='monasca')
-        ceilosca_mapper = ceilosca_mapping.ProcessMappedCeiloscaMetric()
-        ceilosca_mapper.reinitialize()
+
+        ceilosca_mapper = ceilosca_mapping\
+            .ProcessMappedCeiloscaMetric(self.CONF)
+        ceilosca_mapper.reinitialize(self.CONF)
 
     def test_get_samples_for_mapped_meters(self, mdf_mock):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             ml_mock = mock_client().measurements_list
             # TODO(this test case needs more work)
             ml_mock.return_value = ([MONASCA_MEASUREMENT])
@@ -386,7 +400,7 @@ class TestMoanscaDriverForMappedMetrics(TestCeiloscaMapping):
               u'id': u'2015-04-16T18:42:31Z',
               u'name': u'testbatch'}])
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             metrics_list_mock = mock_client().metrics_list
             metrics_list_mock.side_effect = [data1, data2]
             kwargs = dict(limit=4)
@@ -407,7 +421,7 @@ class TestMoanscaDriverForMappedMetrics(TestCeiloscaMapping):
              {"id": "335b5d569ad29dc61b3dc24609fad3619e947944",
               "name": "subnet.update"}])
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             metric_names_list_mock = mock_client().metric_names_list
             metric_names_list_mock.return_value = (
                 dummy_metric_names_mocked_return_value)
@@ -419,7 +433,7 @@ class TestMoanscaDriverForMappedMetrics(TestCeiloscaMapping):
 
     def test_stats_list_mapped_meters(self, mock_mdf):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             sl_mock = mock_client().statistics_list
             sl_mock.return_value = [
                 {
@@ -455,7 +469,7 @@ class TestMoanscaDriverForMappedMetrics(TestCeiloscaMapping):
 
     def test_get_resources_for_mapped_meters(self, mock_mdf):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             dummy_metric_names_mocked_return_value = (
                 [{"id": "015c995b1a770147f4ef18f5841ef566ab33521d",
                   "name": "fake_metric"},
@@ -489,7 +503,7 @@ class TestMoanscaDriverForMappedMetrics(TestCeiloscaMapping):
 
     def test_stats_list_with_groupby_for_mapped_meters(self, mock_mdf):
         with mock.patch("ceilometer.monasca_client.Client") as mock_client:
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             sl_mock = mock_client().statistics_list
             sl_mock.return_value = [
                 {
@@ -567,7 +581,7 @@ class TestMoanscaDriverForMappedMetrics(TestCeiloscaMapping):
             return samples.pop()
 
         with mock.patch("ceilometer.monasca_client.Client"):
-            conn = impl_monasca.Connection("127.0.0.1:8080")
+            conn = impl_monasca.Connection(self.CONF, "127.0.0.1:8080")
             with mock.patch.object(conn, 'get_samples') as gsm:
                 gsm.side_effect = _get_samples
 

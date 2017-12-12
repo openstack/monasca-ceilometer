@@ -1,5 +1,6 @@
 #
 # Copyright 2015 Hewlett Packard
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -20,10 +21,11 @@ import mock
 import pkg_resources
 
 from oslo_config import cfg
-from oslo_config import fixture as fixture_config
 from stevedore import driver
 from stevedore import extension
 
+from ceilometer import monasca_ceilometer_opts
+from ceilometer import service
 from ceilometer import storage
 from ceilometer.tests import base as test_base
 from oslo_policy import opts
@@ -52,31 +54,28 @@ class TestApi(test_base.BaseTestCase):
         mgr._init_plugins([a_driver])
         return mgr
 
-    def get_connection_with_mock_driver_manager(self, url, namespace):
+    def get_connection_with_mock_driver_manager(self, conf, url, namespace):
         mgr = self._get_driver_from_entry_point(
             entry_point='monasca = ceilometer.storage.impl_monasca:Connection',
             namespace='ceilometer.metering.storage')
-        return mgr.driver(url)
+        return mgr.driver(conf, url)
 
-    def get_publisher_with_mock_driver_manager(self, url, namespace):
+    def get_publisher_with_mock_driver_manager(self, conf, url, namespace):
         mgr = self._get_driver_from_entry_point(
             entry_point='monasca = ceilometer.publisher.monclient:'
                         'MonascaPublisher',
-            namespace='ceilometer.publisher')
-        return mgr.driver(url)
+            namespace='ceilometer.sample.publisher')
+        return mgr.driver(conf, url)
 
     def setUp(self):
         super(TestApi, self).setUp()
         self.PATH_PREFIX = '/v2'
 
-        self.CONF = self.useFixture(fixture_config.Config()).conf
-        self.CONF([], project='ceilometer', validate_default_values=True)
-
+        self.CONF = service.prepare_service([], [])
+        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+                                'monasca')
         self.setup_messaging(self.CONF)
         opts.set_defaults(self.CONF)
-
-        self.CONF.set_override("auth_version", "v2.0",
-                               group=OPT_GROUP_NAME)
         self.CONF.set_override("policy_file",
                                self.path_get('etc/ceilometer/policy.json'),
                                group='oslo_policy')
@@ -106,8 +105,10 @@ class TestApi(test_base.BaseTestCase):
                 self.get_connection_with_mock_driver_manager)
             get_pub.side_effect = self.get_publisher_with_mock_driver_manager
             self.mock_mon_client = mock_client
-            self.conn = storage.get_connection('monasca://127.0.0.1:8080',
-                                               'ceilometer.metering.storage')
+            self.conn = storage.get_connection(
+                self.CONF,
+                'monasca://127.0.0.1:8080',
+                'ceilometer.metering.storage')
 
             self.useFixture(fixtures.MockPatch(
                 'ceilometer.storage.get_connection',
@@ -127,7 +128,8 @@ class TestApi(test_base.BaseTestCase):
             },
         }
 
-        return pecan.testing.load_test_app(self.config)
+        return pecan.testing.load_test_app(self.config,
+                                           conf=self.CONF)
 
     def get_json(self, path, expect_errors=False, headers=None,
                  extra_environ=None, q=None, groupby=None, status=None,

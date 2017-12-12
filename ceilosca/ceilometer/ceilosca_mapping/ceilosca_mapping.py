@@ -1,5 +1,6 @@
 #
 # Copyright 2016 Hewlett Packard
+# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -23,23 +24,12 @@ import six
 import yaml
 
 from jsonpath_rw_ext import parser
-from oslo_config import cfg
 from oslo_log import log
-
 
 from ceilometer import pipeline
 from ceilometer import sample
 
 LOG = log.getLogger(__name__)
-
-OPTS = [
-    cfg.StrOpt('ceilometer_monasca_metrics_mapping',
-               default='ceilosca_mapping.yaml',
-               help='Configuration mapping file to map monasca metrics to '
-                    'ceilometer meters'),
-]
-
-cfg.CONF.register_opts(OPTS, group='monasca')
 
 
 class CeiloscaMappingDefinitionException(Exception):
@@ -132,19 +122,19 @@ class CeiloscaMappingDefinition(object):
             return values
 
 
-def get_config_file():
-    config_file = cfg.CONF.monasca.ceilometer_monasca_metrics_mapping
+def get_config_file(conf):
+    config_file = conf.monasca.ceilometer_monasca_metrics_mapping
     if not os.path.exists(config_file):
-        config_file = cfg.CONF.find_file(config_file)
+        config_file = conf.find_file(config_file)
     if not config_file:
         config_file = pkg_resources.resource_filename(
             __name__, "data/ceilosca_mapping.yaml")
     return config_file
 
 
-def setup_ceilosca_mapping_config():
+def setup_ceilosca_mapping_config(conf):
     """Setup the meters definitions from yaml config file."""
-    config_file = get_config_file()
+    config_file = get_config_file(conf)
     if config_file is not None:
         LOG.debug("Ceilometer Monasca Mapping Definitions file: %s",
                   config_file)
@@ -228,11 +218,12 @@ class ProcessMappedCeiloscaMetric(object):
                 cls, *args, **kwargs)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, conf):
         if not (self._instance and self._inited):
+            self.conf = conf
             self._inited = True
             self.__definitions = load_definitions(
-                setup_ceilosca_mapping_config())
+                setup_ceilosca_mapping_config(self.conf))
             self.__mapped_metric_map = dict()
             self.__mon_metric_to_cm_meter_map = dict()
             for d in self.__definitions:
@@ -252,9 +243,10 @@ class ProcessMappedCeiloscaMetric(object):
     def get_ceilosca_mapped_definition_key_val(self, monasca_metric_name, key):
         return self.__mapped_metric_map.get(monasca_metric_name).cfg[key]
 
-    def reinitialize(self):
+    def reinitialize(self, conf):
+        self.conf = conf
         self.__definitions = load_definitions(
-            setup_ceilosca_mapping_config())
+            setup_ceilosca_mapping_config(self.conf))
         self.__mapped_metric_map = dict()
         self.__mon_metric_to_cm_meter_map = dict()
         for d in self.__definitions:
@@ -281,10 +273,11 @@ class PipelineReader(object):
                 cls, *args, **kwargs)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, conf):
         if not (self._instance and self._inited):
             self._inited = True
-            self.__pipeline_manager = pipeline.setup_pipeline()
+            self.conf = conf
+            self.__pipeline_manager = pipeline.setup_pipeline(self.conf)
             self.__meters_from_pipeline = set()
             for pipe in self.__pipeline_manager.pipelines:
                 if not isinstance(pipe, pipeline.EventPipeline):
@@ -296,7 +289,7 @@ class PipelineReader(object):
         return self.__meters_from_pipeline
 
     def reinitialize(self):
-        self.__pipeline_manager = pipeline.setup_pipeline()
+        self.__pipeline_manager = pipeline.setup_pipeline(self.conf)
         self.__meters_from_pipeline = set()
         for pipe in self.__pipeline_manager.pipelines:
             if not isinstance(pipe, pipeline.EventPipeline):
