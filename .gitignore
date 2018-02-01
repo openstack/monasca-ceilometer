@@ -3,3 +3,4 @@
 .tox
 .testrepository
 simulator
+.stestr
