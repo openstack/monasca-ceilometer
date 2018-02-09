@@ -38,7 +38,7 @@ class TestMonascaClient(base.BaseTestCase):
                                'http://localhost:5000/v2.0',
                                'monasca')
 
-        self.CONF.set_override('max_retries', 0, 'database')
+        self.CONF.set_override('database_max_retries', 0, 'monasca')
         self.mc = self._get_client()
 
     def tearDown(self):
@@ -111,8 +111,8 @@ class TestMonascaClient(base.BaseTestCase):
         self.assertIsNotNone(True, conf.service_username)
 
     def test_retry_on_key_error(self):
-        self.CONF.set_override('max_retries', 2, 'database')
-        self.CONF.set_override('retry_interval', 1, 'database')
+        self.CONF.set_override('database_max_retries', 2, 'monasca')
+        self.CONF.set_override('database_retry_interval', 1, 'monasca')
         self.mc = self._get_client()
         with mock.patch.object(
                 self.mc._mon_client.metrics, 'list',
@@ -121,8 +121,8 @@ class TestMonascaClient(base.BaseTestCase):
             self.assertEqual(2, mocked_metrics_list.call_count)
 
     def test_no_retry_on_invalid_parameter(self):
-        self.CONF.set_override('max_retries', 2, 'database')
-        self.CONF.set_override('retry_interval', 1, 'database')
+        self.CONF.set_override('database_max_retries', 2, 'monasca')
+        self.CONF.set_override('database_retry_interval', 1, 'monasca')
         self.mc = self._get_client()
 
         def _check(exception):
@@ -139,7 +139,8 @@ class TestMonascaClient(base.BaseTestCase):
 
     def test_max_retris_not_too_much(self):
         def _check(configured, expected):
-            self.CONF.set_override('max_retries', configured, 'database')
+            self.CONF.set_override('database_max_retries', configured,
+                                   'monasca')
             self.mc = self._get_client()
             self.assertEqual(expected, self.mc._max_retries)
 

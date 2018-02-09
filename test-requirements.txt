@@ -1,4 +1,4 @@
-git+https://github.com/openstack/ceilometer.git@stable/pike#egg=ceilometer
+git+https://github.com/openstack/ceilometer.git@master#egg=ceilometer
 mock>=1.2
 testrepository>=0.0.18
 testscenarios>=0.4

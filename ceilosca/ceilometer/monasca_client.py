@@ -54,8 +54,8 @@ class Client(object):
 
     def __init__(self, conf, parsed_url):
         self.conf = conf
-        self._retry_interval = self.conf.database.retry_interval
-        self._max_retries = self.conf.database.max_retries or 1
+        self._retry_interval = self.conf.monasca.database_retry_interval
+        self._max_retries = self.conf.monasca.database_max_retries or 1
         # enable monasca api pagination
         self._enable_api_pagination = self.conf.monasca.enable_api_pagination
         # NOTE(zqfan): There are many concurrency requests while using
