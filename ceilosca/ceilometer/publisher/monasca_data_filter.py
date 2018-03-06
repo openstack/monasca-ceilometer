@@ -19,6 +19,7 @@ import datetime
 from jsonpath_rw_ext import parser
 from oslo_log import log
 from oslo_utils import timeutils
+import six
 import yaml
 
 from ceilometer.ceilosca_mapping.ceilosca_mapping import (
@@ -125,7 +126,8 @@ class MonascaDataFilter(object):
             if len(val_matches) > 0:
                 # resolve the find to the first match and get value
                 val = val_matches[0].value
-                if not isinstance(val, str) and not isinstance(val, int):
+                if not isinstance(val, (str, six.text_type)) \
+                   and not isinstance(val, int):
                     # Don't support lists or dicts or ...
                     raise CeiloscaMappingDefinitionException(
                         "Metadata format mismatch, value "
