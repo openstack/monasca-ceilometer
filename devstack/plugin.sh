@@ -26,7 +26,7 @@ function configure_ceilosca {
 
     iniset $CEILOMETER_CONF database metering_connection monasca://$MONASCA_API_URL
     iniset $CEILOMETER_CONF notification workers $API_WORKERS
-    iniset $CEILOMETER_CONF notifications workload_partitioning False
+    iniset $CEILOMETER_CONF notification workload_partitioning False
     # Disable, otherwise Ceilosca won't process and store event data
     iniset $CEILOMETER_CONF notification disable_non_metric_meters False
 
