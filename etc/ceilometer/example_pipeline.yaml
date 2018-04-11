@@ -1,0 +1,71 @@
+---
+sources:
+    - name: compute_source
+      interval: 30
+      meters:
+          - "instance"
+          - "memory"
+          - "vcpus"
+      sinks:
+          - meter_sink
+    - name: network_source
+      interval: 30
+      meters:
+      meters:
+          - "network"
+          - "port"
+          - "router"
+          - "subnet"
+          - "ip.floating"
+          - "network.create"
+          - "network.update"
+          - "network.delete"
+          - "port.create"
+          - "port.delete"
+          - "port.update"
+          - "router.create"
+          - "router.delete"
+          - "router.update"
+          - "subnet.create"
+          - "subnet.delete"
+          - "subnet.update"
+      sinks:
+          - meter_sink
+    - name: image_source
+      interval: 30
+      meters:
+          - "image"
+          - "image.size"
+          - "image.update"
+          - "image.upload"
+          - "image.delete"
+      sinks:
+          - meter_sink
+    - name: volume_source
+      interval: 30
+      meters:
+          - "volume"
+          - "volume.size"
+          - "snapshot"
+          - "snapshot.size"
+          - "volume.delete.end"
+          - "volume.create.end"
+          - "volume.resize.end"
+          - "volume.update.end"
+          - "snapshot.create.end"
+          - "snapshot.delete.end"
+      sinks:
+          - meter_sink
+    - name: swift_source
+      interval: 3600
+      meters:
+          - "storage.objects"
+          - "storage.objects.size"
+          - "storage.objects.containers"
+      sinks:
+          - meter_sink
+sinks:
+    - name: meter_sink
+      transformers:
+      publishers:
+         - monasca://https://<your monasca instance virtual IP>:8070/v2.0

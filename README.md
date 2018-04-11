@@ -10,6 +10,8 @@ monasca-ceilometer
 
 Python plugin and storage driver for Ceilometer to send samples to monasca-api
 
+## Installation
+
 ### Installation instructions for setting up Ceilosca automatically
 
 See devstack/README.md
@@ -65,9 +67,9 @@ Assumes that an active monasca-api server is running.
 8.  Make sure the user specified under service_credentials in ceilometer.conf
     has *monasca_user role* added.
 
-### Other info
+### Other install info
 
-Since we don't have full repo of ceilometer, we setup the ceilometer repo in
+Since we don't have a full repo of ceilometer, we setup the ceilometer repo in
 venv and copy monasca integration files in there, and run the unit tests over
 that code. At present this is tested against ceilometer stable/pike branch,
 if you need to test against different branch you can change it in
@@ -82,9 +84,77 @@ Relevant files are:
 
 * test-requirements.txt - contains the dependencies required for testing
 
+## Using Ceilosca
+
+### Defining or changing existing meters
+
+From time to time, Ceilometer introduces new meters.  The list of currently
+supported measurements can be found at
+<https://docs.openstack.org/ceilometer/pike/admin/telemetry-measurements.html>
+(which is generated from
+<https://github.com/openstack/ceilometer/doc/source/admin/telemetry-measurements.rst>).
+
+Meters are specified both for transfer from Ceilometer to Monasca API and from
+Monasca to Ceilometer v2 API (for versions supporting it).
+
+Some meters require additional configuration in Ceilometer. For example, the
+SDN pollster meters need specialized drivers. For more information about how
+Ceilometer collects meters through polling or collecting, please reference the
+[Telemetry documentation][1] and [measurements][2].
+
+#### Defining which meters are published from Ceilometer to Monasca API
+
+As with Ceilometer, the list of meters to be published is specified in
+`/etc/ceilometer/pipeline.yaml`.
+
+As metering data accumulates over time, it is recommended that Ceilometer be
+configured to only publish meters where the customer has a need for the data.
+Additionally, it is recommended to check the measurements captured by
+Monasca agents to avoid any duplication of data.
+
+To enable or disable meters,
+1. Identify the current list of meters being collected, specified in
+   `/etc/ceilometer/pipeline.yaml`.
+   * Hint: You can see which meters are currently being reported through
+     `monasca metric list` (or `ceilometer meter-list` in Pike and earlier).
+2. Edit the `/etc/ceilometer/pipeline.yaml` file to add or remove entries from
+   the meters list.  For a short example see
+   etc/ceilometer/ceilosca_pipeline.yaml or the longer
+   etc/ceilometer/example_pipeline.yaml.
+3. Repeat changes for all control plane nodes.
+4. Restart all Ceilometer notification agents, polling agents, and central
+   services to pick up the changes.
+
+To create new meters (or clean out removed meters),
+1. Identify which meters are available for this OpenStack Ceilometer release
+   [2][2]
+   * Idenfity which parameters should be transfered to Monasca.
+   * Identify the Origin of the meter.  Be aware that Pollster meters may
+     require additional configuration.
+3. Modify `monasca_field_definitions.yml` with the new meters.
+4. Restart Ceilometer services on all control nodes.
+
+Also note that HPE published documentation describing how to configure the
+metering service (using Ceilosca in Helion OpenStack 3.0 and later), which
+may be helpful for historical context. [3][3] [4][4] [5][5]
+
+#### Defining which meters are available through Ceilometer v2 API (deprecated)
+
+The Ceilometer v2 API was deprecated as of Newton and removed in Queens from
+the ceilometer repo.  All of the published Ceilometer measurements will
+continue to be available through the Monasca API.
+
+
+[1]: https://docs.openstack.org/ceilometer/pike/admin/index.html
+[2]: https://docs.openstack.org/ceilometer/pike/admin/telemetry-measurements.html
+[3]: https://docs.hpcloud.com/hos-3.x/helion/metering/metering_reconfig.html
+[4]: https://docs.hpcloud.com/hos-3.x/helion/metering/metering_notifications.html#notifications__list
+[5]: https://docs.hpcloud.com/hos-5.x/helion/metering/metering_notifications.html#notifications__list
+
 # License
 
 Copyright (c) 2015-2017 Hewlett-Packard Development Company, L.P.
+(c) Copyright 2018 SUSE LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
