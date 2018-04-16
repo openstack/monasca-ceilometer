@@ -8,31 +8,33 @@ Team and repository tags
 monasca-ceilometer
 ========
 
-Python plugin and storage driver for Ceilometer to send samples to monasca-api
+Python plugin and storage driver for Ceilometer to send samples to monasca-api.
+Also known as [Ceilosca][6].
 
 ## Installation
 
 ### Installation instructions for setting up Ceilosca automatically
 
-See devstack/README.md
+See [devstack/README.md](devstack/README.md).
 
 ### Installation Instructions for setting up Ceilosca manually
 
-*To set up ceilosca automatically, read the instructions in devstack/README.md
+*To set up Ceilosca automatically, read the instructions in devstack/README.md
 or use the included Vagrantfile*
 
-Assumes that an active monasca-api server is running.
+Assumes that an active monasca-api server is running after installing DevStack.
 
-1.  Run devstack to get openstack installed.
+1.  Run devstack to get openstack installed, including Monasca and Ceilometer
+    plugins.
 
-2.  Install python-monascaclient
+2.  Install python-monascaclient.
 
         pip install python-monascaclient
 
 3.  Clone monasca-ceilometer from github.com.
 
-      Copy the following files from *ceilosca/ceilometer* to devstack's
-      ceilometer location typically at /opt/stack/ceilometer
+4.  Copy the following files from `ceilosca/ceilometer` to devstack's
+    ceilometer location, typically at `/opt/stack/ceilometer`.
 
         monasca_client.py
         tests/* (skipping the init.py files)
@@ -42,29 +44,30 @@ Assumes that an active monasca-api server is running.
         opts.py
         monasca_ceilometer_opts.py
 
-4.  Edit setup.cfg (used at the time of installation)
+5.  Edit `setup.cfg` (used at the time of installation)
 
       Under 'ceilometer.sample.publisher =' section add the following line:
 
         monasca = ceilometer.publisher.monclient:MonascaPublisher
 
-5.  Configure /etc/ceilometer/pipeline.yaml to send the metrics to the monasca
+6.  Configure `/etc/ceilometer/pipeline.yaml` to send the metrics to the monasca
     publisher. Use the included monasca-ceilometer/etc/ceilometer/pipeline.yaml
     file as an example.
 
-6.  Configure /etc/ceilometer/ceilometer.conf for setting up storage driver for
+7.  Configure `/etc/ceilometer/ceilometer.conf` for setting up storage driver for
     ceilometer API. Use the included
-    monasca-ceilometer/etc/ceilometer/ceilometer.conf file as an example.
+    `monasca-ceilometer/etc/ceilometer/ceilometer.conf` file as an example.
 
-7.  Copy the included monasca_field_definitions.yml and monasca_pipeline.yaml
-    files from monasca-ceilometer/etc/ceilometer to /etc/ceilometer.
+8.  Copy the included `monasca_field_definitions.yml` and
+    `monasca_pipeline.yaml`
+    files from `monasca-ceilometer/etc/ceilometer` to `/etc/ceilometer`.
 
     This monasca_field_definitions.yaml file contains configuration how to treat
     each field in ceilometer sample object on per meter basis.
     The monasca_data_filter.py uses this file and only stores the fields that
     are specified in this config file.
 
-8.  Make sure the user specified under service_credentials in ceilometer.conf
+9.  Make sure the user specified under service_credentials in `ceilometer.conf`
     has *monasca_user role* added.
 
 ### Other install info
@@ -84,6 +87,7 @@ Relevant files are:
 
 * test-requirements.txt - contains the dependencies required for testing
 
+
 ## Using Ceilosca
 
 ### Defining or changing existing meters
@@ -95,7 +99,10 @@ supported measurements can be found at
 <https://github.com/openstack/ceilometer/doc/source/admin/telemetry-measurements.rst>).
 
 Meters are specified both for transfer from Ceilometer to Monasca API and from
-Monasca to Ceilometer v2 API (for versions supporting it).
+Monasca to Ceilometer v2 API (for versions supporting it).  In a nutshell,
+pipeline YAML from Ceilometer along with the ceilometer_static_info_mapping.yaml
+from Ceilosca define what goes to Monasca API, and ceilosca_mapping.yaml defines
+what gets mapped back from Monasca API to Ceilometer v2 API (deprecated).
 
 Some meters require additional configuration in Ceilometer. For example, the
 SDN pollster meters need specialized drivers. For more information about how
@@ -116,7 +123,7 @@ To enable or disable meters,
 1. Identify the current list of meters being collected, specified in
    `/etc/ceilometer/pipeline.yaml`.
    * Hint: You can see which meters are currently being reported through
-     `monasca metric list` (or `ceilometer meter-list` in Pike and earlier).
+     `monasca metric-list` (or `ceilometer meter-list` in Pike and earlier).
 2. Edit the `/etc/ceilometer/pipeline.yaml` file to add or remove entries from
    the meters list.  For a short example see
    etc/ceilometer/ceilosca_pipeline.yaml or the longer
@@ -127,7 +134,7 @@ To enable or disable meters,
 
 To create new meters (or clean out removed meters),
 1. Identify which meters are available for this OpenStack Ceilometer release
-   [2][2]
+   on [telemetry-measurements.html][2]
    * Idenfity which parameters should be transfered to Monasca.
    * Identify the Origin of the meter.  Be aware that Pollster meters may
      require additional configuration.
@@ -144,16 +151,58 @@ The Ceilometer v2 API was deprecated as of Newton and removed in Queens from
 the ceilometer repo.  All of the published Ceilometer measurements will
 continue to be available through the Monasca API.
 
+Note: It is possible, for Ceilometer versions before the Ceilometer v2
+API was removed (Pike, Ocata, etc), to map Monasca gathered metrics back to the
+Ceilometer API by specifying them in the `/etc/ceilosca-mapping.yaml` file.
+For example, "cpu.time_ns" for a vm component can be mapped back to "cpu" in
+Ceilometer v2 API.
+
+
+### Using Monasca API meters collected by Ceilosca
+
+Here are a few examples of how a meter gathered by Ceilometer and passed
+through Ceilosca can be found and used in the Monasca API.
+
+In Ceilometer pipeline YAML file
+| Ceilometer meter | Monasca API metric |
+| ---------------- | ------------------ |
+| vcpus            | vcpus              |
+| image.size       | image.size         |
+| disk.root.size   | disk.root.size     |
+| memory           | memory             |
+| storage.objects  | storage.objects    |
+
+In /etc/ceilometer/ceilometer-static-info-mapping.yaml
+| Ceilometer meter | Monasca API metric |
+| ---------------- | ------------------ |
+| disk.ephemeral.size | disk.ephemeral.size |
+| disk.root.size   | disk.root.size     |
+
+Note: Monasca Agent can gather many similar metrics directly, such as cpu time
+for a VM.  For simplicity, it is recommended that the Monasca Agent be favored
+when choosing which metrics to use.
+
+The source for these configuration files in the monasca-ceilometer repo is:
+```
+ceilosca
+├── ceilometer
+│   ├── ceilosca_mapping
+│   │   ├── data
+│   │   │   ├── ceilometer_static_info_mapping.yaml
+│   │   │   └── ceilosca_mapping.yaml
+```
 
 [1]: https://docs.openstack.org/ceilometer/pike/admin/index.html
 [2]: https://docs.openstack.org/ceilometer/pike/admin/telemetry-measurements.html
 [3]: https://docs.hpcloud.com/hos-3.x/helion/metering/metering_reconfig.html
 [4]: https://docs.hpcloud.com/hos-3.x/helion/metering/metering_notifications.html#notifications__list
 [5]: https://docs.hpcloud.com/hos-5.x/helion/metering/metering_notifications.html#notifications__list
+[6]: https://wiki.openstack.org/wiki/Ceilosca
 
 # License
 
 Copyright (c) 2015-2017 Hewlett-Packard Development Company, L.P.
+
 (c) Copyright 2018 SUSE LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
