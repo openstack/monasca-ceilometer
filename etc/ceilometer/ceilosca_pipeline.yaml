@@ -19,4 +19,4 @@ sinks:
     - name: meter_sink
       transformers:
       publishers:
-        - monasca://http://192.168.10.6:8070/v2.0
+        - monasca://INSERT-URL-HERE

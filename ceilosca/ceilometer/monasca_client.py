@@ -13,8 +13,6 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-import copy
-
 from monascaclient import client
 from monascaclient import exc
 from oslo_log import log
@@ -121,6 +119,7 @@ class Client(object):
                                          self._endpoint, **self._kwargs)
 
     def call_func(self, func, **kwargs):
+        """General method for calling any Monasca API function."""
         @tenacity.retry(
             wait=tenacity.wait_fixed(self._retry_interval),
             stop=tenacity.stop_after_attempt(self._max_retries),
@@ -156,101 +155,3 @@ class Client(object):
     def metrics_create(self, **kwargs):
         return self.call_func(self._mon_client.metrics.create,
                               **kwargs)
-
-    def metrics_list(self, **kwargs):
-        """Using monasca pagination to get all metrics.
-
-        We yield endless metrics till caller doesn't want more or
-        no more is left.
-        """
-        search_args = copy.deepcopy(kwargs)
-        metrics = self.call_func(self._mon_client.metrics.list, **search_args)
-        # check if api pagination is enabled
-        if self._enable_api_pagination:
-            # page through monasca results
-            while metrics:
-                for metric in metrics:
-                    yield metric
-                # offset for metrics is the last metric's id
-                search_args['offset'] = metric['id']
-                metrics = self.call_func(self._mon_client.metrics.list,
-                                         **search_args)
-        else:
-            for metric in metrics:
-                yield metric
-
-    def metric_names_list(self, **kwargs):
-        return self.call_func(self._mon_client.metrics.list_names,
-                              **kwargs)
-
-    def measurements_list(self, **kwargs):
-        """Using monasca pagination to get all measurements.
-
-        We yield endless measurements till caller doesn't want more or
-        no more is left.
-        """
-        search_args = copy.deepcopy(kwargs)
-        measurements = self.call_func(
-            self._mon_client.metrics.list_measurements,
-            **search_args)
-        # check if api pagination is enabled
-        if self._enable_api_pagination:
-            while measurements and len(measurements[0]["measurements"]) > 0:
-                for measurement in measurements:
-                    if measurement["measurements"] is not None and \
-                       len(measurement["measurements"]) > 0:
-                        # offset for measurements is measurement id composited
-                        # with the last measurement's timestamp
-                        last_good_offset = '%s_%s' % (
-                            measurement['id'],
-                            measurement['measurements'][-1][0])
-                    yield measurement
-                search_args['offset'] = last_good_offset
-                measurements = self.call_func(
-                    self._mon_client.metrics.list_measurements,
-                    **search_args)
-        else:
-            for measurement in measurements:
-                yield measurement
-
-    def statistics_list(self, **kwargs):
-        """Using monasca pagination to get all statistics.
-
-        We yield endless statistics till caller doesn't want more or
-        no more is left.
-        """
-        search_args = copy.deepcopy(kwargs)
-        statistics = self.call_func(self._mon_client.metrics.list_statistics,
-                                    **search_args)
-        # check if api pagination is enabled
-        if self._enable_api_pagination:
-            while statistics and len(statistics[0]["statistics"]) > 0:
-                for statistic in statistics:
-                    if statistic["statistics"] is not None and \
-                       len(statistic["statistics"]) > 0:
-                        # offset for statistics is statistic id composited with
-                        # the last statistic's timestamp
-                        last_good_offset = '%s_%s' % (
-                            statistic['id'], statistic['statistics'][-1][0])
-                    yield statistic
-
-                # with groupby, the offset is unpredictable to me, we don't
-                # support pagination for it now.
-                if kwargs.get('group_by'):
-                    break
-                search_args['offset'] = last_good_offset
-                statistics = self.call_func(
-                    self._mon_client.metrics.list_statistics,
-                    **search_args)
-                # unlike metrics.list and metrics.list_measurements
-                # return whole new data, metrics.list_statistics
-                # next page will use last page's final statistic
-                # data as the first one, so we need to pop it here.
-                # I think Monasca should treat this as a bug and fix it.
-                if statistics:
-                    statistics[0]['statistics'].pop(0)
-                    if len(statistics[0]['statistics']) == 0:
-                        statistics.pop(0)
-        else:
-            for statistic in statistics:
-                yield statistic

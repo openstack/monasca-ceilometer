@@ -4,8 +4,11 @@ source $DEST/ceilometer/devstack/settings
 
 enable_service ceilosca
 
-MONASCA_API_URL=http://$SERVICE_HOST:8070/v2.0
+# Should be getting the same value as in the Keystone endpoint list!
+# Note: to clarify, Monasca is at /metrics/v2.0, Gnocchi is at /metric (no s)
+MONASCA_API_URL=http://$SERVICE_HOST/metrics/v2.0
+
 CEILOSCA_DIR=$DEST/ceilosca
-CEILOSCA_FILES='ceilometer/monasca_client.py ceilometer/publisher/monasca_data_filter.py ceilometer/publisher/monclient.py ceilometer/storage/impl_monasca.py ../devstack/setup.cfg:.'
+CEILOSCA_FILES='ceilometer/monasca_client.py ceilometer/publisher/monasca_data_filter.py ceilometer/publisher/monasca.py ceilometer/opts.py ceilometer/monasca_opts.py ../devstack/setup.cfg:.'
 CEILOSCA_CONF_FILES='ceilosca_pipeline.yaml:pipeline.yaml monasca_field_definitions.yaml'
 CEILOSCA_USER=$USER
