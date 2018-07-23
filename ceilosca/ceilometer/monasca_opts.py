@@ -19,18 +19,6 @@ from oslo_config import cfg
 
 OPTS = [
 
-    # from ceilometer_static_info_mapping
-    cfg.StrOpt('ceilometer_static_info_mapping',
-               default='ceilometer_static_info_mapping.yaml',
-               help='Configuration mapping file to map ceilometer meters to '
-                    'their units an type information'),
-
-    # from ceilosca_mapping
-    cfg.StrOpt('ceilometer_monasca_metrics_mapping',
-               default='ceilosca_mapping.yaml',
-               help='Configuration mapping file to map monasca metrics to '
-                    'ceilometer meters'),
-
     # from monasca_client
     cfg.StrOpt('clientapi_version',
                default='2_0',

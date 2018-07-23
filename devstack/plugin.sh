@@ -13,6 +13,15 @@ function configure_ceilosca {
     echo "In configure_ceilosca"
     sudo mkdir -p /etc/ceilometer
     sudo chown $CEILOSCA_USER /etc/ceilometer
+    # back up Ceilometer's ceilometer.conf for reference
+    if [[ -e /etc/ceilometer/ceilometer.conf ]]; then
+        cp /etc/ceilometer/ceilometer.conf /etc/ceilometer/ceilometer.conf.preceilosca
+    fi
+    # back up existing pipeline.yaml
+    if [[ -e /etc/ceilometer/pipeline.yaml ]]; then
+        cp /etc/ceilometer/pipeline.yaml /etc/ceilometer/pipeline.yaml.preceilosca
+    fi
+
     for ceilosca_conf_file in $CEILOSCA_CONF_FILES
     do
         # source file and dest file names are separated with :
@@ -24,24 +33,48 @@ function configure_ceilosca {
         cp $CEILOSCA_DIR/etc/ceilometer/$source_file /etc/ceilometer/$dest_file
     done
 
-    iniset $CEILOMETER_CONF database metering_connection monasca://$MONASCA_API_URL
+    # For reference, these ceilometer.conf options should be checked against
+    # the current version and any updates made with each release.
+    # https://docs.openstack.org/ceilometer/latest/configuration/
+
+    # [database] removed after Pike
+    # iniset $CEILOMETER_CONF database metering_connection monasca://$MONASCA_API_URL
     iniset $CEILOMETER_CONF notification workers $API_WORKERS
+    # TODO: workload_partitioning deprecated in Rocky
     iniset $CEILOMETER_CONF notification workload_partitioning False
     # Disable, otherwise Ceilosca won't process and store event data
-    iniset $CEILOMETER_CONF notification disable_non_metric_meters False
+    # iniset $CEILOMETER_CONF notification disable_non_metric_meters False
 
     # Workaround: Client has a problem with the /identity auth url only in service_credentials
     auth_url=$(iniget $CEILOMETER_CONF service_credentials auth_url)
-    if [[ -n "$auth_url" ]]; then
-        # Go direct to the port
-        auth_url=${auth_url/%\/identity/:35357\/v3}
-        iniset $CEILOMETER_CONF service_credentials auth_url ${auth_url}
-    fi
+    #if [[ -n "$auth_url" ]]; then
+    #    # Go direct to the port
+    #    auth_url=${auth_url/%\/identity/:35357\/v3}
+    #    iniset $CEILOMETER_CONF service_credentials auth_url ${auth_url}
+    #fi
+
+    # Add the [monasca] section and connection values
+    iniset $CEILOMETER_CONF monasca service_auth_url ${auth_url}
+    iniset $CEILOMETER_CONF monasca service_interface internalURL
+    iniset $CEILOMETER_CONF monasca service_auth_type password
+
+    # default monasca user for devstack (check monasca-api/devstack/plugin.sh)
+    iniset $CEILOMETER_CONF monasca service_username mini-mon
+    iniset $CEILOMETER_CONF monasca service_password password
+    iniset $CEILOMETER_CONF monasca service_project_name mini-mon
+    iniset $CEILOMETER_CONF monasca service_domain_name Default
+    iniset $CEILOMETER_CONF monasca service_region_name RegionOne
+
+    # leave the defaults for retry_on_failure, retry_interval,
+    # enable_api_pagination, database_retry_interval, database_max_retries
+
+    # Fill in Monasca URL in pipeline.yaml
+    sed -i "s,monasca://INSERT-URL-HERE,monasca://${MONASCA_API_URL},g" /etc/ceilometer/pipeline.yaml
 }
 
 function preinstall_ceilosca {
-    # create new directory
-    cp -r $CEILOSCA_DIR/ceilosca/ceilometer/ceilosca_mapping $CEILOMETER_DIR/ceilometer/
+    # create new directory --- removed in Rocky
+    # cp -r $CEILOSCA_DIR/ceilosca/ceilometer/ceilosca_mapping $CEILOMETER_DIR/ceilometer/
 
     # overlay files into existing dirs
     for ceilosca_file in $CEILOSCA_FILES
@@ -59,7 +92,6 @@ function preinstall_ceilosca {
     if ! grep -q "python-monascaclient" $CEILOMETER_DIR/requirements.txt; then
         sudo bash -c "echo python-monascaclient >> $CEILOMETER_DIR/requirements.txt"
     fi
-
 }
 
 # check for service enabled

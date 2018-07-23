@@ -21,6 +21,7 @@ import threading
 import time
 
 from oslo_log import log
+from six import moves
 
 import ceilometer
 from ceilometer import monasca_client as mon_client
@@ -199,7 +200,7 @@ class MonascaPublisher(publisher.ConfigPublisherBase):
 
             # Iterate over the retry_queue to eliminate
             # metrics that have maxed out their retry attempts
-            for ctr in xrange(retry_count):
+            for ctr in moves.xrange(retry_count):
                 if self.retry_counter[ctr] > self.conf.monasca.max_retries:
                     if hasattr(self, 'archive_handler'):
                         self.archive_handler.publish_samples(

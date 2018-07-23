@@ -13,7 +13,7 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
-"""Tests for ceilometer/publisher/monclient.py
+"""Tests for ceilometer/publisher/monasca.py
 """
 
 import datetime
@@ -23,9 +23,9 @@ import time
 import mock
 from oslotest import base
 
-from ceilometer import monasca_ceilometer_opts
 from ceilometer import monasca_client as mon_client
-from ceilometer.publisher import monclient
+from ceilometer import monasca_opts
+from ceilometer.publisher import monasca as mon_publisher
 from ceilometer import sample
 from ceilometer import service
 
@@ -111,7 +111,7 @@ class TestMonascaPublisher(base.BaseTestCase):
         super(TestMonascaPublisher, self).setUp()
 
         self.CONF = service.prepare_service([], [])
-        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+        self.CONF.register_opts(list(monasca_opts.OPTS),
                                 'monasca')
         self.CONF.set_override('service_username', 'ceilometer', 'monasca')
         self.CONF.set_override('service_password', 'admin', 'monasca')
@@ -136,7 +136,7 @@ class TestMonascaPublisher(base.BaseTestCase):
                 side_effect=[field_mappings])
     def test_publisher_publish(self, mapping_patch):
         self.CONF.set_override('batch_mode', False, group='monasca')
-        publisher = monclient.MonascaPublisher(self.CONF, self.parsed_url)
+        publisher = mon_publisher.MonascaPublisher(self.CONF, self.parsed_url)
         publisher.mon_client = mock.MagicMock()
 
         with mock.patch.object(publisher.mon_client,
@@ -154,7 +154,7 @@ class TestMonascaPublisher(base.BaseTestCase):
         self.CONF.set_override('batch_count', 3, group='monasca')
         self.CONF.set_override('batch_polling_interval', 1, group='monasca')
 
-        publisher = monclient.MonascaPublisher(self.CONF, self.parsed_url)
+        publisher = mon_publisher.MonascaPublisher(self.CONF, self.parsed_url)
         publisher.mon_client = mock.MagicMock()
         with mock.patch.object(publisher.mon_client,
                                'metrics_create') as mock_create:
@@ -175,7 +175,7 @@ class TestMonascaPublisher(base.BaseTestCase):
         self.CONF.set_override('retry_interval', 2, group='monasca')
         self.CONF.set_override('max_retries', 1, group='monasca')
 
-        publisher = monclient.MonascaPublisher(self.CONF, self.parsed_url)
+        publisher = mon_publisher.MonascaPublisher(self.CONF, self.parsed_url)
         publisher.mon_client = mock.MagicMock()
         with mock.patch.object(publisher.mon_client,
                                'metrics_create') as mock_create:
@@ -200,8 +200,8 @@ class TestMonascaPublisher(base.BaseTestCase):
             'ceilometer.publisher.file.FilePublisher',
             return_value=self.fake_publisher))
 
-        publisher = monclient.MonascaPublisher(self.CONF,
-                                               self.parsed_url)
+        publisher = mon_publisher.MonascaPublisher(self.CONF,
+                                                   self.parsed_url)
         publisher.mon_client = mock.MagicMock()
 
         with mock.patch.object(publisher.mon_client,

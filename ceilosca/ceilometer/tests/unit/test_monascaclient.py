@@ -17,8 +17,8 @@ import mock
 from oslo_utils import netutils
 from oslotest import base
 
-from ceilometer import monasca_ceilometer_opts
 from ceilometer import monasca_client
+from ceilometer import monasca_opts
 from ceilometer import service
 
 from monascaclient import exc
@@ -30,7 +30,7 @@ class TestMonascaClient(base.BaseTestCase):
         super(TestMonascaClient, self).setUp()
 
         self.CONF = service.prepare_service([], [])
-        self.CONF.register_opts(list(monasca_ceilometer_opts.OPTS),
+        self.CONF.register_opts(list(monasca_opts.OPTS),
                                 'monasca')
         self.CONF.set_override('service_username', 'ceilometer', 'monasca')
         self.CONF.set_override('service_password', 'admin', 'monasca')
@@ -78,7 +78,7 @@ class TestMonascaClient(base.BaseTestCase):
                 as create_patch:
             e = self.assertRaises(tenacity.RetryError,
                                   self.mc.metrics_create)
-            (original_ex, traceobj) = e.last_attempt.exception_info()
+            original_ex = e.last_attempt.exception()
             self.assertIsInstance(original_ex,
                                   monasca_client.MonascaServiceException)
             self.assertEqual(1, create_patch.call_count)
@@ -110,16 +110,6 @@ class TestMonascaClient(base.BaseTestCase):
 
         self.assertIsNotNone(True, conf.service_username)
 
-    def test_retry_on_key_error(self):
-        self.CONF.set_override('database_max_retries', 2, 'monasca')
-        self.CONF.set_override('database_retry_interval', 1, 'monasca')
-        self.mc = self._get_client()
-        with mock.patch.object(
-                self.mc._mon_client.metrics, 'list',
-                side_effect=[KeyError, []]) as mocked_metrics_list:
-            list(self.mc.metrics_list())
-            self.assertEqual(2, mocked_metrics_list.call_count)
-
     def test_no_retry_on_invalid_parameter(self):
         self.CONF.set_override('database_max_retries', 2, 'monasca')
         self.CONF.set_override('database_retry_interval', 1, 'monasca')
@@ -128,16 +118,16 @@ class TestMonascaClient(base.BaseTestCase):
         def _check(exception):
             expected_exc = monasca_client.MonascaInvalidParametersException
             with mock.patch.object(
-                    self.mc._mon_client.metrics, 'list',
-                    side_effect=[exception, []]
+                    self.mc._mon_client.metrics, 'create',
+                    side_effect=[exception, True]
             ) as mocked_metrics_list:
-                self.assertRaises(expected_exc, list, self.mc.metrics_list())
+                self.assertRaises(expected_exc, self.mc.metrics_create)
                 self.assertEqual(1, mocked_metrics_list.call_count)
 
         _check(exc.http.UnprocessableEntity)
         _check(exc.http.BadRequest)
 
-    def test_max_retris_not_too_much(self):
+    def test_max_retries_not_too_much(self):
         def _check(configured, expected):
             self.CONF.set_override('database_max_retries', configured,
                                    'monasca')
@@ -151,25 +141,27 @@ class TestMonascaClient(base.BaseTestCase):
 
     def test_meaningful_exception_message(self):
         with mock.patch.object(
-                self.mc._mon_client.metrics, 'list',
+                self.mc._mon_client.metrics, 'create',
                 side_effect=[exc.http.InternalServerError,
                              exc.http.UnprocessableEntity,
                              KeyError]):
             e = self.assertRaises(
                 tenacity.RetryError,
-                list, self.mc.metrics_list())
-            (original_ex, traceobj) = e.last_attempt.exception_info()
+                self.mc.metrics_create)
+            original_ex = e.last_attempt.exception()
             self.assertIn('Monasca service is unavailable',
                           str(original_ex))
+
             e = self.assertRaises(
                 monasca_client.MonascaInvalidParametersException,
-                list, self.mc.metrics_list())
+                self.mc.metrics_create)
             self.assertIn('Request cannot be handled by Monasca',
                           str(e))
+
             e = self.assertRaises(
                 tenacity.RetryError,
-                list, self.mc.metrics_list())
-            (original_ex, traceobj) = e.last_attempt.exception_info()
+                self.mc.metrics_create)
+            original_ex = e.last_attempt.exception()
             self.assertIn('An exception is raised from Monasca',
                           str(original_ex))
 
@@ -181,238 +173,3 @@ class TestMonascaClient(base.BaseTestCase):
             self.assertRaises(
                 monasca_client.MonascaInvalidParametersException,
                 self.mc.metrics_create)
-
-    def test_metrics_list_with_pagination(self):
-
-        metric_list_pages = [[{u'dimensions': {},
-                               u'measurements': [
-                                   [u'2015-04-14T17:52:31Z',
-                                    1.0, {}]],
-                               u'id': u'2015-04-14T18:42:31Z',
-                               u'columns': [u'timestamp', u'value',
-                                            u'value_meta'],
-                               u'name': u'test1'}],
-                             [{u'dimensions': {},
-                               u'measurements': [
-                                   [u'2015-04-15T17:52:31Z',
-                                    2.0, {}]],
-                               u'id': u'2015-04-15T18:42:31Z',
-                               u'columns': [u'timestamp', u'value',
-                                            u'value_meta'],
-                               u'name': u'test2'}], None]
-
-        expected_page_count = len(metric_list_pages)
-        expected_metric_names = ["test1", "test2"]
-
-        self.CONF.set_override('enable_api_pagination',
-                               True, group='monasca')
-        # get a new ceilosca mc
-        mc = self._get_client()
-        with mock.patch.object(
-                mc._mon_client.metrics, 'list',
-                side_effect=metric_list_pages) as mocked_metrics_list:
-            returned_metrics = mc.metrics_list()
-            returned_metric_names_list = [metric["name"]
-                                          for metric in returned_metrics]
-            self.assertListEqual(expected_metric_names,
-                                 returned_metric_names_list)
-            self.assertEqual(expected_page_count,
-                             mocked_metrics_list.call_count)
-            self.assertEqual(True, mocked_metrics_list.called)
-
-    def test_metrics_list_without_pagination(self):
-
-        metric_list_pages = [[{u'dimensions': {},
-                               u'measurements': [
-                                   [u'2015-04-14T17:52:31Z',
-                                    1.0, {}]],
-                               u'id': u'2015-04-14T18:42:31Z',
-                               u'columns': [u'timestamp', u'value',
-                                            u'value_meta'],
-                               u'name': u'test1'}],
-                             [{u'dimensions': {},
-                               u'measurements': [
-                                   [u'2015-04-15T17:52:31Z',
-                                    2.0, {}]],
-                               u'id': u'2015-04-15T18:42:31Z',
-                               u'columns': [u'timestamp', u'value',
-                                            u'value_meta'],
-                               u'name': u'test2'}], None]
-
-        # first page only
-        expected_page_count = 1
-        expected_metric_names = ["test1"]
-
-        self.CONF.set_override('enable_api_pagination',
-                               False, group='monasca')
-        # get a new ceilosca mc
-        mc = self._get_client()
-        with mock.patch.object(
-                mc._mon_client.metrics, 'list',
-                side_effect=metric_list_pages) as mocked_metrics_list:
-            returned_metrics = mc.metrics_list()
-            returned_metric_names_list = [metric["name"]
-                                          for metric in returned_metrics]
-            self.assertListEqual(expected_metric_names,
-                                 returned_metric_names_list)
-            self.assertEqual(expected_page_count,
-                             mocked_metrics_list.call_count)
-            self.assertEqual(True, mocked_metrics_list.called)
-
-    def test_measurement_list_with_pagination(self):
-
-        measurement_list_pages = [[{u'dimensions': {},
-                                    u'measurements': [
-                                        [u'2015-04-14T17:52:31Z',
-                                         1.0, {}]],
-                                    u'id': u'2015-04-14T18:42:31Z',
-                                    u'columns': [u'timestamp', u'value',
-                                                 u'value_meta'],
-                                    u'name': u'test1'}],
-                                  [{u'dimensions': {},
-                                    u'measurements': [
-                                        [u'2015-04-15T17:52:31Z',
-                                         2.0, {}]],
-                                    u'id': u'2015-04-15T18:42:31Z',
-                                    u'columns': [u'timestamp', u'value',
-                                                 u'value_meta'],
-                                    u'name': u'test2'}], None]
-
-        expected_page_count = len(measurement_list_pages)
-        expected_metric_names = ["test1", "test2"]
-
-        self.CONF.set_override('enable_api_pagination',
-                               True, group='monasca')
-        # get a new ceilosca mc
-        mc = self._get_client()
-        with mock.patch.object(
-                mc._mon_client.metrics, 'list_measurements',
-                side_effect=measurement_list_pages) as mocked_metrics_list:
-            returned_metrics = mc.measurements_list()
-            returned_metric_names_list = [metric["name"]
-                                          for metric in returned_metrics]
-            self.assertListEqual(expected_metric_names,
-                                 returned_metric_names_list)
-            self.assertEqual(expected_page_count,
-                             mocked_metrics_list.call_count)
-            self.assertEqual(True, mocked_metrics_list.called)
-
-    def test_measurement_list_without_pagination(self):
-
-        measurement_list_pages = [[{u'dimensions': {},
-                                    u'measurements': [
-                                        [u'2015-04-14T17:52:31Z',
-                                         1.0, {}]],
-                                    u'id': u'2015-04-14T18:42:31Z',
-                                    u'columns': [u'timestamp', u'value',
-                                                 u'value_meta'],
-                                    u'name': u'test1'}],
-                                  [{u'dimensions': {},
-                                    u'measurements': [
-                                    [u'2015-04-15T17:52:31Z',
-                                     2.0, {}]],
-                                    u'id': u'2015-04-15T18:42:31Z',
-                                    u'columns': [u'timestamp', u'value',
-                                                 u'value_meta'],
-                                    u'name': u'test2'}], None]
-
-        # first page only
-        expected_page_count = 1
-        expected_metric_names = ["test1"]
-
-        self.CONF.set_override('enable_api_pagination',
-                               False, group='monasca')
-        # get a new ceilosca mc
-        mc = self._get_client()
-        with mock.patch.object(
-                mc._mon_client.metrics, 'list_measurements',
-                side_effect=measurement_list_pages) as mocked_metrics_list:
-            returned_metrics = mc.measurements_list()
-            returned_metric_names_list = [metric["name"]
-                                          for metric in returned_metrics]
-            self.assertListEqual(expected_metric_names,
-                                 returned_metric_names_list)
-            self.assertEqual(expected_page_count,
-                             mocked_metrics_list.call_count)
-            self.assertEqual(True, mocked_metrics_list.called)
-
-    def test_statistics_list_with_pagination(self):
-
-        statistics_list_pages = [[{u'dimensions': {},
-                                   u'statistics': [
-                                       [u'2015-04-14T17:52:31Z',
-                                        1.0, 10.0],
-                                       [u'2015-04-15T17:52:31Z',
-                                        1.0, 10.0]],
-                                   u'id': u'2015-04-14T18:42:31Z',
-                                   u'columns': [u'timestamp', u'avg',
-                                                u'max'],
-                                   u'name': u'test1'}],
-                                 [{u'dimensions': {},
-                                   u'statistics': [
-                                       [u'2015-04-16T17:52:31Z',
-                                        2.0, 20.0],
-                                       [u'2015-04-17T17:52:31Z',
-                                        2.0, 20.0]],
-                                   u'id': u'2015-04-15T18:42:31Z',
-                                   u'columns': [u'timestamp', u'avg',
-                                                u'max'],
-                                   u'name': u'test2'}], None]
-
-        expected_page_count = len(statistics_list_pages)
-        expected_metric_names = ["test1", "test2"]
-
-        self.CONF.set_override('enable_api_pagination',
-                               True, group='monasca')
-        # get a new ceilosca mc
-        mc = self._get_client()
-        with mock.patch.object(
-                mc._mon_client.metrics, 'list_statistics',
-                side_effect=statistics_list_pages) as mocked_metrics_list:
-
-            returned_metrics = mc.statistics_list()
-            returned_metric_names_list = [metric["name"]
-                                          for metric in returned_metrics]
-            self.assertListEqual(expected_metric_names,
-                                 returned_metric_names_list)
-            self.assertEqual(expected_page_count,
-                             mocked_metrics_list.call_count)
-            self.assertEqual(True, mocked_metrics_list.called)
-
-    def test_statistics_list_without_pagination(self):
-
-        statistics_list_pages = [[{u'dimensions': {},
-                                   u'statistics': [
-                                       [u'2015-04-14T17:52:31Z',
-                                        1.0, 10.0]],
-                                   u'id': u'2015-04-14T18:42:31Z',
-                                   u'columns': [u'timestamp', u'avg',
-                                                u'max'],
-                                   u'name': u'test1'}],
-                                 [{u'dimensions': {},
-                                   u'statistics': [
-                                       [u'2015-04-15T17:52:31Z',
-                                        2.0, 20.0]],
-                                   u'id': u'2015-04-15T18:42:31Z',
-                                   u'columns': [u'timestamp', u'avg',
-                                                u'max'],
-                                   u'name': u'test2'}], None]
-        # first page only
-        expected_page_count = 1
-        expected_metric_names = ["test1"]
-
-        self.CONF.set_override('enable_api_pagination',
-                               False, group='monasca')
-        # get a new ceilosca mc
-        mc = self._get_client()
-        with mock.patch.object(
-                mc._mon_client.metrics, 'list_statistics',
-                side_effect=statistics_list_pages) as mocked_metrics_list:
-            returned_metrics = mc.statistics_list()
-            returned_metric_names_list = [metric["name"]
-                                          for metric in returned_metrics]
-            self.assertListEqual(expected_metric_names,
-                                 returned_metric_names_list)
-            self.assertEqual(expected_page_count,
-                             mocked_metrics_list.call_count)
-            self.assertEqual(True, mocked_metrics_list.called)
