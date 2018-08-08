@@ -160,9 +160,9 @@ To create new meters (or clean out removed meters),
 1. Identify which meters are available for this OpenStack Ceilometer release
    on`telemetry-measurements.html`_
 
-  - Idenfity which parameters should betransfered to Monasca.
-  - Identify the Origin of the meter. Be aware that Pollster meters may
-    require additional configuration.
+   - Idenfity which parameters should betransfered to Monasca.
+   - Identify the Origin of the meter. Be aware that Pollster meters may
+     require additional configuration.
 
 2. Modify ``monasca_field_definitions.yml`` with the new meters.
 
@@ -233,7 +233,7 @@ License
 
 Copyright (c) 2015-2017 Hewlett-Packard Development Company, L.P.
 
-(c) Copyright 2018 SUSE LLC
+Copyright (c) 2018 SUSE LLC
 
 Licensed under the Apache License, Version 2.0 (the “License”); you may
 not use this file except in compliance with the License. You may obtain
@@ -256,7 +256,4 @@ limitations under the License.
 .. _link 2: https://docs.hpcloud.com/hos-3.x/helion/metering/metering_notifications.html#notifications__list
 .. _link 3: https://docs.hpcloud.com/hos-5.x/helion/metering/metering_notifications.html#notifications__list
 .. _Ceilosca: https://wiki.openstack.org/wiki/Ceilosca
-.. _Team and repository tags: https://governance.openstack.org/reference/tags/index.html
 .. _devstack/README.md: devstack/README.md
-
-
