@@ -25,6 +25,7 @@ import oslo_messaging as messaging
 from oslo_messaging import notify  # noqa
 from oslo_messaging import rpc  # noqa
 from oslo_utils import timeutils
+import six
 
 LOG = logging.getLogger()
 
@@ -209,8 +210,8 @@ def notifier(_id, transport, messages, wait_after_msg, timeout,
 
 def _volume_payload(project_id, resource_id, load_date):
     return {'user_id': u'abcd_01234_dcba',
-            'tenant_id': unicode(project_id),
-            'volume_id': unicode(resource_id),
+            'tenant_id': six.text_type(project_id),
+            'volume_id': six.text_type(resource_id),
             'size': 1024,
             'availablity_zone': u'nova',
             'display_name': u'simulator',
@@ -231,14 +232,14 @@ def _instance_payload(project_id, resource_id, load_date):
                             'type': u'fixed',
                             'version': 4}],
             'image_ref_url': u'http://10.0.2.15:9292/images/UUID',
-            'instance_id': unicode(resource_id),
+            'instance_id': six.text_type(resource_id),
             'instance_type': u'm1.xlarge',
             'instance_type_id': 2,
             'launched_at': load_date + str(timeutils.utcnow())[-15:-7],
             'memory_mb': 512,
             'state': u'active',
             'state_description': u'',
-            'tenant_id': unicode(project_id),
+            'tenant_id': six.text_type(project_id),
             'user_id': u'abcd_01234_dcba',
             'reservation_id': u'1e3ce043029547f1a61c1996d1a531a3',
             'vcpus': 10,
@@ -255,7 +256,7 @@ def _instance_payload(project_id, resource_id, load_date):
 
 
 def _image_payload(project_id, resource_id, load_date):
-    return {'id': unicode(resource_id),
+    return {'id': six.text_type(resource_id),
             'name': u'myImage',
             'status': u'active',
             'created_at': load_date + str(timeutils.utcnow())[-15:-7],
@@ -264,7 +265,7 @@ def _image_payload(project_id, resource_id, load_date):
             'min_ram': 4096,
             'protected': u'',
             'checksum': u'',
-            'owner': unicode(project_id),
+            'owner': six.text_type(project_id),
             'disk_format': u'',
             'container_format': u'',
             'size': 1000000,
