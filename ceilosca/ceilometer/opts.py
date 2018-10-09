@@ -30,7 +30,6 @@ import ceilometer.ipmi.platform.intel_node_manager
 import ceilometer.ipmi.pollsters
 import ceilometer.keystone_client
 import ceilometer.meter.notifications
-import ceilometer.middleware
 import ceilometer.monasca_opts
 import ceilometer.neutron_client
 import ceilometer.notification
@@ -71,8 +70,7 @@ def list_opts():
     # This have been removed due to a recursive import issue
     return [
         ('DEFAULT',
-         itertools.chain(ceilometer.polling.manager.OPTS,
-                         ceilometer.compute.virt.inspector.OPTS,
+         itertools.chain(ceilometer.compute.virt.inspector.OPTS,
                          ceilometer.compute.virt.libvirt.utils.OPTS,
                          ceilometer.objectstore.swift.OPTS,
                          ceilometer.pipeline.base.OPTS,
