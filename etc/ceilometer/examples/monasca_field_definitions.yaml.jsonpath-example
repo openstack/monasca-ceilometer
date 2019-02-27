@@ -1,0 +1,51 @@
+dimensions:
+    - resource_id
+    - project_id
+    - user_id
+    - geolocation
+    - region
+    - availability_zone
+    - type
+    - unit
+    - source
+metadata:
+    common:
+        - event_type
+        - audit_period_beginning
+        - audit_period_ending
+    instance:
+        - state
+        - state_description
+    image:
+        - size
+        - status
+    image.size:
+        - size
+        - status
+    image.update:
+        - size
+        - status
+    image.upload:
+        - size
+        - status
+    image.delete:
+        - size
+        - status
+    snapshot:
+        - status
+    snapshot.size:
+        - status
+    volume:
+        - status
+    volume.size:
+        - status
+    volume.create.end:
+        - size
+        - volume_type
+        - status
+        - created_at
+        - host
+        - metadata:
+            - jsonpath: $.metadata[?(@.key = 'metering.prn_name')].value
+              storein: metering.prn_name
+        - metering.prn_name: $.metadata[?(@.key = 'metering.prn_name')].value
