@@ -23,8 +23,8 @@ sudo pip install python-monascaclient
 
 #Handle if http_proxy is set
 if [ $http_proxy ]; then
-  git config --global url.https://git.openstack.org/.insteadOf git://git.openstack.org/
-  sudo git config --global url.https://git.openstack.org/.insteadOf git://git.openstack.org/
+  git config --global url.https://git.openstack.org/.insteadOf https://git.openstack.org/
+  sudo git config --global url.https://git.openstack.org/.insteadOf https://git.openstack.org/
   protocol=`echo $http_proxy | awk -F: '{print $1}'`
   host=`echo $http_proxy | awk -F/ '{print $3}' | awk -F: '{print $1}'`
   port=`echo $http_proxy | awk -F/ '{print $3}' | awk -F: '{print $2}'`
