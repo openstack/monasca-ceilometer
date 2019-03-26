@@ -43,7 +43,6 @@ ceilosca_conf_files = {
     [
         'etc/ceilometer/monasca_field_definitions.yaml',
         'etc/ceilometer/pipeline.yaml',
-        'etc/ceilometer/monasca_pipeline.yaml',
         'etc/ceilometer/ceilometer.conf',
         'etc/ceilometer/policy.json'
     ]

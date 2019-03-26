@@ -1,13 +1,44 @@
 ---
 sources:
-    - name: meter_source
-      interval: 60
+    - name: compute_source
+      interval: 30
       meters:
-          - "instance"
+          - "memory"
+          - "vcpus"
+      sinks:
+          - meter_sink
+    - name: network_source
+      interval: 30
+      meters:
+          - "bandwidth"
+      sinks:
+          - meter_sink
+    - name: image_source
+      interval: 30
+      meters:
+          - "image.size"
+          - "image.update"
+          - "image.upload"
+          - "image.delete"
+      sinks:
+          - meter_sink
+    - name: volume_source
+      interval: 30
+      meters:
+          - "volume.size"
+          - "snapshot.size"
+      sinks:
+          - meter_sink
+    - name: swift_source
+      interval: 3600
+      meters:
+          - "storage.objects"
+          - "storage.objects.size"
+          - "storage.objects.containers"
       sinks:
           - meter_sink
 sinks:
     - name: meter_sink
       transformers:
       publishers:
-          - monasca://http://192.168.10.6:8070/v2.0
+         - monasca://http://192.168.10.6:8070/v2.0
