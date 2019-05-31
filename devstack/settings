@@ -10,5 +10,5 @@ MONASCA_API_URL=http://$SERVICE_HOST/metrics/v2.0
 
 CEILOSCA_DIR=$DEST/ceilosca
 CEILOSCA_FILES='ceilometer/monasca_client.py ceilometer/publisher/monasca_data_filter.py ceilometer/publisher/monasca.py ceilometer/opts.py ceilometer/monasca_opts.py ../devstack/setup.cfg:.'
-CEILOSCA_CONF_FILES='ceilosca_pipeline.yaml:pipeline.yaml monasca_field_definitions.yaml'
+CEILOSCA_CONF_FILES='ceilosca-devstack_pipeline.yaml:pipeline.yaml monasca_field_definitions.yaml'
 CEILOSCA_USER=$USER

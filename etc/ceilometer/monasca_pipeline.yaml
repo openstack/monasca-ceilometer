@@ -1,3 +1,5 @@
+# This pipeline.yaml is used for unit testing of Monasca Ceilometer and does
+# not represent real measurements from Ceilometer.
 ---
 sources:
     - name: meter_source

@@ -1,3 +1,6 @@
+# An example pipeline.yaml
+# Reference https://docs.openstack.org/ceilometer/latest/admin/telemetry-measurements.html
+# for other possible meters.
 ---
 sources:
     - name: compute_source
@@ -17,9 +20,6 @@ sources:
       interval: 30
       meters:
           - "image.size"
-          - "image.update"
-          - "image.upload"
-          - "image.delete"
       sinks:
           - meter_sink
     - name: volume_source

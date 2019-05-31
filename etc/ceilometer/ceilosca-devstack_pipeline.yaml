@@ -1,0 +1,19 @@
+# This simple pipeline.yaml is copied in to place by the devstack/plugin.sh
+# as specified in devstack/settings.
+---
+sources:
+    - name: meter_source
+      interval: 60
+      meters:
+        - "image.size"
+#        - "image.download"
+#        - "image.serve"
+        - "snapshot.size"
+        - "volume.size"
+      sinks:
+        - meter_sink
+sinks:
+    - name: meter_sink
+      transformers:
+      publishers:
+        - monasca://INSERT-URL-HERE
