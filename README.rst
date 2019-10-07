@@ -33,6 +33,26 @@ DevStack.
 1. Run devstack to get openstack installed, including Monasca and
    Ceilometer plugins.
 
+  a. Not all Ceilometer components are required. The following may be
+     disabled in ``local.conf`` if using an older Ceilometer release.
+     ::
+
+       disable_service ceilometer-alarm-notifier
+       disable_service ceilometer-alarm-evaluator
+       disable_service ceilometer-collector
+
+  b. Panko and Aodh from the Telemetry project are not required,
+     as Monasca will be providing these types of services.
+
+  c. Gnocchi is also not required, as Monasca uses a configured
+     Time-Series Database for measurement storage.
+
+     Gnocchi installation in DevStack may be skipped by setting the
+     following in ``local.conf``.
+     ::
+
+       CEILOMETER_BACKEND=none
+
 2. Install python-monascaclient.
 
    ::

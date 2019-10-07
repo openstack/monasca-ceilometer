@@ -3,21 +3,22 @@
 There are a few options for configuring Ceilosca on top of a Ceilometer and Monasca deployment.
 
 Choose one:
-- DevStack can be instructed through the local.conf to "enable ceilosca".  Reference the included
-  devstack/sample-local.conf for one example configuration.
+- DevStack can be instructed through the `local.conf` to "enable ceilosca".  Reference the included
+  `devstack/sample-local.conf` for one example configuration.
 
 - Use the included Vagrantfile to create and provision a VM.  This will provision a new Ubuntu 16.04 VM and run the
   ceilosca.sh.
 
-- Under certain conditions the monasca_test_setup.py may be used to set up Ceilosca for testing.  This .py may also be
+- Under certain conditions the `monasca_test_setup.py` may be used to set up Ceilosca for testing.  This .py may also be
   useful reference if you choose to write your own integration scripts.
 
-- The devstack/ceilosca.sh script will copy Ceilosca components on top of Ceilometer.
+- The `devstack/ceilosca.sh` script will copy Ceilosca components on top of Ceilometer.
   - ceilosca.sh has been updated to the Newton release.
   - ceilosca.sh is also used by the Vagrant deployment option.
-  - The script should be tweaked before execution, particularly the lines.
-    - export SERVICE_HOST=192.168.10.6
-    - export HOST_IP_IFACE=eth0
+  - The script should be tweaked before execution, particularly the lines below
+    should be set to match the environment.
+    - `export SERVICE_HOST=192.168.10.6`
+    - `export HOST_IP_IFACE=eth0`
   - The script should be run by a sudoers user with no password required.  Such as is described in
     https://docs.openstack.org/devstack/latest/
   - And note ceilosca.sh does not configure Horizon
@@ -39,6 +40,7 @@ export OS_USERNAME=mini-mon
   - Devstack includes a cirros 3.5 image by default.  This will be represented in an `image.size` metric in monasca
     with a datasource of `ceilometer`.
 - Cause further metrics to be created by doing more OpenStack operations.
+  Here are a few examples.
   - Create another image
     - wget -c http://download.cirros-cloud.net/0.4.0/cirros-0.4.0-x86_64-disk.img -o cirros-0.4.0-x86_64-disk.img
     - openstack image create --disk-format qcow2 --container-format bare cirros-0.4.0 < cirros-0.4.0-x86_64-disk.img
@@ -53,5 +55,5 @@ export OS_USERNAME=mini-mon
     - openstack security group rule create --proto tcp --dst-port 22 <security group id>
     - openstack server create --flavor <flavor id> --image <image id> --security-group <security group id> mytest
     - Check the progress with `openstack server list`
-  - Look for additional metrics with `datasource: ceilometer` in `monasca metric-list`
+- Look for additional metrics with `datasource: ceilometer` in `monasca metric-list`
 - Explore the samples (aka. measurements) in `monasca measurement-list image.size -120` and similar commands.
