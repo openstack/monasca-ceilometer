@@ -1,8 +1,8 @@
-git+https://github.com/openstack/ceilometer.git@stable/pike#egg=ceilometer
-mock>=1.2
+git+https://github.com/openstack/ceilometer.git@stable/queens#egg=ceilometer
+mock>=1.2 # BSD
 testrepository>=0.0.18
-testscenarios>=0.4
-testtools>=1.4.0
+testscenarios>=0.4 # Apache-2.0/BSD
+testtools>=1.4.0 # MIT
 oslotest>=2.15.0 # Apache-2.0
 oslo.vmware>=1.16.0,<2.17.0 # Apache-2.0
 # Use lower versions of config and utils since
@@ -10,6 +10,8 @@ oslo.vmware>=1.16.0,<2.17.0 # Apache-2.0
 oslo.config>=3.22.0 # Apache-2.0
 oslo.log>=1.14.0 # Apache-2.0
 os-testr>=1.0.0 # Apache-2.0
-python-monascaclient<=1.7.1
+python-monascaclient<=1.10.0
 docutils>=0.11 # OSI-Approved Open Source, Public Domain
 hacking<0.11,>=0.10.0
+# only needed in Queens
+osc-lib==1.8.0 # Apache-2.0

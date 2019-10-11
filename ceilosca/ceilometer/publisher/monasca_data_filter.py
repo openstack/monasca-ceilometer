@@ -19,10 +19,9 @@ import datetime
 from jsonpath_rw_ext import parser
 from oslo_log import log
 from oslo_utils import timeutils
+import six
 import yaml
 
-from ceilometer.ceilosca_mapping.ceilosca_mapping import (
-    CeiloscaMappingDefinitionException)
 from ceilometer import sample as sample_util
 
 LOG = log.getLogger(__name__)
@@ -34,6 +33,17 @@ class UnableToLoadMappings(Exception):
 
 class NoMappingsFound(Exception):
     pass
+
+
+class CeiloscaMappingDefinitionException(Exception):
+    def __init__(self, message, definition_cfg):
+        super(CeiloscaMappingDefinitionException, self).__init__(message)
+        self.message = message
+        self.definition_cfg = definition_cfg
+
+    def __str__(self):
+        return '%s %s: %s' % (self.__class__.__name__,
+                              self.definition_cfg, self.message)
 
 
 class MonascaDataFilter(object):
@@ -112,7 +122,7 @@ class MonascaDataFilter(object):
             # If following convention, dict will have one and only one
             # element of the form <monasca key>: <json path>
             if len(meta_key.keys()) == 1:
-                mon_key = meta_key.keys()[0]
+                mon_key = list(meta_key.keys())[0]
             else:
                 # If no keys or more keys than one
                 raise CeiloscaMappingDefinitionException(
@@ -125,7 +135,8 @@ class MonascaDataFilter(object):
             if len(val_matches) > 0:
                 # resolve the find to the first match and get value
                 val = val_matches[0].value
-                if not isinstance(val, str) and not isinstance(val, int):
+                if not isinstance(val, (str, six.text_type)) \
+                   and not isinstance(val, int):
                     # Don't support lists or dicts or ...
                     raise CeiloscaMappingDefinitionException(
                         "Metadata format mismatch, value "

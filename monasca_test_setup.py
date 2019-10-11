@@ -25,8 +25,7 @@ ceilosca_files = {
         'monasca_client.py',
         'monasca_ceilometer_opts.py',
         'publisher/monasca_data_filter.py',
-        'publisher/monclient.py',
-        'storage/impl_monasca.py'
+        'publisher/monclient.py'
     ]
 }
 
@@ -34,11 +33,6 @@ ceilosca_files = {
 # python cannot load our files for unit testing
 for src, dest in ceilosca_files.items():
     shutil.copyfile(src, dest)
-
-# Include new module
-shutil.rmtree(ceilo_dir + "/ceilosca_mapping/", True)
-shutil.copytree('ceilosca/ceilometer/ceilosca_mapping',
-                ceilo_dir + "/ceilosca_mapping/")
 
 ceilo_parent_dir = os.path.dirname(os.path.abspath(
     os.path.dirname(ceilometer.__file__)))

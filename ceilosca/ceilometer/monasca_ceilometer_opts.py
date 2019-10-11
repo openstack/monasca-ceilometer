@@ -19,18 +19,6 @@ from oslo_config import cfg
 
 OPTS = [
 
-    # from ceilometer_static_info_mapping
-    cfg.StrOpt('ceilometer_static_info_mapping',
-               default='ceilometer_static_info_mapping.yaml',
-               help='Configuration mapping file to map ceilometer meters to '
-                    'their units an type information'),
-
-    # from ceilosca_mapping
-    cfg.StrOpt('ceilometer_monasca_metrics_mapping',
-               default='ceilosca_mapping.yaml',
-               help='Configuration mapping file to map monasca metrics to '
-                    'ceilometer meters'),
-
     # from monasca_client
     cfg.StrOpt('clientapi_version',
                default='2_0',
@@ -104,11 +92,17 @@ OPTS = [
                     'Monasca. These include metrics that failed to '
                     'publish on first attempt and failed metrics that'
                     ' maxed out their retries.'),
-
     # from impl_monasca
     cfg.IntOpt('default_stats_period',
                default=300,
                help='Default period (in seconds) to use for querying stats '
                     'in case no period specified in the stats API call.'),
+    cfg.IntOpt('database_max_retries',
+               default=3,
+               help='Maximum number of retry attempts of connecting to '
+                    'database failure.'),
+    cfg.IntOpt('database_retry_interval',
+               default=60,
+               help='Frequency of attempting a retry connecting to database'),
 
 ]

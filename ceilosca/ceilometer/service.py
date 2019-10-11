@@ -1,5 +1,4 @@
 # Copyright 2012-2014 eNovance <licensing@enovance.com>
-# (c) Copyright 2018 SUSE LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -16,13 +15,10 @@
 import sys
 
 from oslo_config import cfg
-from oslo_db import options as db_options
 import oslo_i18n
 from oslo_log import log
-from oslo_policy import opts as policy_opts
-# from oslo_reports import guru_meditation_report as gmr
+from oslo_reports import guru_meditation_report as gmr
 
-from ceilometer.conf import defaults
 from ceilometer import keystone_client
 from ceilometer import messaging
 from ceilometer import opts
@@ -48,9 +44,6 @@ def prepare_service(argv=None, config_files=None, conf=None):
                   ['futurist=INFO', 'neutronclient=INFO',
                    'keystoneclient=INFO'])
     log.set_defaults(default_log_levels=log_levels)
-    defaults.set_cors_middleware_defaults()
-    policy_opts.set_defaults(conf)
-    db_options.set_defaults(conf)
 
     conf(argv[1:], project='ceilometer', validate_default_values=True,
          version=version.version_info.version_string(),
@@ -62,11 +55,6 @@ def prepare_service(argv=None, config_files=None, conf=None):
     utils.setup_root_helper(conf)
     sample.setup(conf)
 
-    # NOTE(liusheng): guru cannot run with service under apache daemon, so when
-    # ceilometer-api running with mod_wsgi, the argv is [], we don't start
-    # guru.
-    if argv:
-        # gmr.TextGuruMeditation.setup_autorun(version)
-        pass
+    gmr.TextGuruMeditation.setup_autorun(version)
     messaging.setup()
     return conf

@@ -19,8 +19,6 @@ import mock
 from oslo_utils import timeutils
 from oslotest import base
 
-from ceilometer.ceilosca_mapping.ceilosca_mapping import (
-    CeiloscaMappingDefinitionException)
 from ceilometer import monasca_ceilometer_opts
 from ceilometer.publisher import monasca_data_filter as mdf
 from ceilometer import sample
@@ -418,7 +416,7 @@ class TestMonUtils(base.BaseTestCase):
             try:
                 # Don't assign to a variable, this should raise
                 data_filter.process_sample_for_monasca(s)
-            except CeiloscaMappingDefinitionException as e:
+            except mdf.CeiloscaMappingDefinitionException as e:
                 self.assertEqual(
                     'Metadata format mismatch, value should be '
                     'a simple string. [\'aaa0001\', \'bbbb002\']',
@@ -503,7 +501,7 @@ class TestMonUtils(base.BaseTestCase):
             try:
                 # Don't assign to a variable as this should raise
                 data_filter.process_sample_for_monasca(s)
-            except CeiloscaMappingDefinitionException as e:
+            except mdf.CeiloscaMappingDefinitionException as e:
                 # Make sure we got the right kind of error
                 # Cannot check the whole message text, as python
                 # may reorder a dict when producing a string version
