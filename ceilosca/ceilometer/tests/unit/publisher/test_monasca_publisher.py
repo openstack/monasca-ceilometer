@@ -17,10 +17,11 @@
 """
 
 import datetime
+from unittest import mock
+
 import fixtures
 import time
 
-import mock
 from oslotest import base
 
 from ceilometer import monasca_client as mon_client
