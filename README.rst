@@ -13,6 +13,17 @@ monasca-ceilometer
 Python plugin and storage driver for Ceilometer to send samples to
 monasca-api. Also known as `Ceilosca`_.
 
+.. important::
+
+    Ceilosca is **DEPRECATED** as of the Ussuri OpenStack release.
+    The functionality of Ceilosca is `now found in Ceilometer`_ as the Monasca
+    Publisher option.  This closer integration will make it easier to deploy and
+    connect Ceilometer to Monasca.  To support older versions and follow OpenStack
+    deprecation policies, this repository will continue to be maintained, but new
+    deployments are encouraged to determine if the metrics required are available
+    directly in Monasca, or use `the Monasca Publisher`_.
+
+
 Installation
 ------------
 
@@ -233,3 +244,5 @@ limitations under the License.
 .. _link 3: https://docs.hpcloud.com/hos-5.x/helion/metering/metering_notifications.html#notifications__list
 .. _Ceilosca: https://wiki.openstack.org/wiki/Ceilosca
 .. _devstack/README.md: devstack/README.md
+.. _now found in Ceilometer: https://opendev.org/openstack/ceilometer/commit/126350c0ae609c5d35d54556883da2476e81e30e
+.. _the Monasca Publisher: https://docs.openstack.org/ceilometer/latest/admin/telemetry-data-pipelines.html#pipeline-configuration
