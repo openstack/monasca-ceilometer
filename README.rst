@@ -142,7 +142,7 @@ From time to time, Ceilometer introduces new meters. The list of
 currently supported measurements can be found at
 https://docs.openstack.org/ceilometer/pike/admin/telemetry-measurements.html
 (which is generated from
-https://github.com/openstack/ceilometer/doc/source/admin/telemetry-measurements.rst).
+https://github.com/openstack/ceilometer/blob/master/doc/source/admin/telemetry-measurements.rst).
 
 Some meters require additional configuration in Ceilometer. For example,
 the SDN pollster meters need specialized drivers. For more information
