@@ -140,7 +140,7 @@ Defining or changing existing meters
 
 From time to time, Ceilometer introduces new meters. The list of
 currently supported measurements can be found at
-https://docs.openstack.org/ceilometer/pike/admin/telemetry-measurements.html
+https://docs.openstack.org/ceilometer/ussuri/admin/telemetry-measurements.html
 (which is generated from
 https://github.com/openstack/ceilometer/blob/master/doc/source/admin/telemetry-measurements.rst).
 
