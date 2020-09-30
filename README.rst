@@ -1,4 +1,4 @@
-Team and repository tags
+Team and Repository Tags
 ========================
 
 
@@ -7,7 +7,7 @@ Team and repository tags
 
 .. Change things from this point on
 
-monasca-ceilometer
+Monasca-Ceilometer
 ==================
 
 Python plugin and storage driver for Ceilometer to send samples to
@@ -32,7 +32,7 @@ Installation instructions for setting up Ceilosca automatically
 
 See `devstack/README.md`_.
 
-Installation Instructions for setting up Ceilosca manually
+Installation Instructions for setting up Ceilosca Manually
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *To set up Ceilosca automatically, read the instructions in
